@@ -28,14 +28,21 @@ export function useUndoRedo(): [
   );
 
   const doIt = async (doCb: DoCallback, preserveRedo?: boolean) => {
-    setLocked(true);
-    let undo = await doCb();
-
-    setUndoStack([[doCb, undo], ...undoStack]);
-    if (!preserveRedo) {
-      setRedoStack([]);
+    if (locked) {
+      throw new Error("operation invoked when existing operation in progress");
     }
-    setLocked(false);
+
+    setLocked(true);
+    try {
+      const undo = await doCb();
+
+      setUndoStack((prev) => [[doCb, undo], ...prev]);
+      if (!preserveRedo) {
+        setRedoStack([]);
+      }
+    } finally {
+      setLocked(false);
+    }
   };
 
   const undo = async () => {
@@ -47,14 +54,15 @@ export function useUndoRedo(): [
       throw new Error("undo invoked with no operations to undo");
     }
 
+    const [doCb, undoCb] = undoStack[0];
     setLocked(true);
-    let [doCb, undoCb] = undoStack[0];
-    setUndoStack(undoStack.slice(1));
-    setRedoStack([doCb, ...redoStack]);
-
-    await undoCb();
-
-    setLocked(false);
+    try {
+      await undoCb();
+      setUndoStack((prev) => prev.slice(1));
+      setRedoStack((prev) => [doCb, ...prev]);
+    } finally {
+      setLocked(false);
+    }
   };
 
   const redo = async () => {
@@ -66,11 +74,16 @@ export function useUndoRedo(): [
       throw new Error("redo invoked with no operations to redo");
     }
 
-    let doCb = redoStack[0];
+    const doCb = redoStack[0];
 
-    setRedoStack(redoStack.slice(1));
-
-    return await doIt(doCb, true);
+    setLocked(true);
+    try {
+      const undoCb = await doCb();
+      setRedoStack((prev) => prev.slice(1));
+      setUndoStack((prev) => [[doCb, undoCb], ...prev]);
+    } finally {
+      setLocked(false);
+    }
   };
 
   const reset = () => {

@@ -24,13 +24,16 @@ import { PhysicalLayoutPicker } from "./PhysicalLayoutPicker";
 import { Keymap as KeymapComp } from "./Keymap";
 import { useConnectedDeviceData } from "../rpc/useConnectedDeviceData";
 import { ConnectionContext } from "../rpc/ConnectionContext";
-import { UndoRedoContext } from "../undoRedo";
+import { DoCallback, UndoRedoContext } from "../undoRedo";
 import { BehaviorBindingPicker } from "../behaviors/BehaviorBindingPicker";
 import { produce } from "immer";
 import { LockStateContext } from "../rpc/LockStateContext";
 import { LockState } from "@zmkfirmware/zmk-studio-ts-client/core";
 import { deserializeLayoutZoom, LayoutZoom } from "./PhysicalLayout";
 import { useLocalStorageState } from "../misc/useLocalStorageState";
+import { DeviceSettings } from "./DeviceSettings";
+
+type MainView = "keymap" | "settings";
 
 type BehaviorMap = Record<number, GetBehaviorDetailsResponse>;
 
@@ -56,34 +59,41 @@ function useBehaviors(): BehaviorMap {
         return;
       }
 
-      let get_behaviors: Request = {
-        behaviors: { listAllBehaviors: true },
-        requestId: 0,
-      };
+      try {
+        let get_behaviors: Request = {
+          behaviors: { listAllBehaviors: true },
+          requestId: 0,
+        };
 
-      let behavior_list = await call_rpc(connection.conn, get_behaviors);
-      if (!ignore) {
-        let behavior_map: BehaviorMap = {};
-        for (let behaviorId of behavior_list.behaviors?.listAllBehaviors
-          ?.behaviors || []) {
-          if (ignore) {
-            break;
+        let behavior_list = await call_rpc(connection.conn, get_behaviors);
+        if (!ignore) {
+          let behavior_map: BehaviorMap = {};
+          for (let behaviorId of behavior_list.behaviors?.listAllBehaviors
+            ?.behaviors || []) {
+            if (ignore) {
+              break;
+            }
+            let details_req = {
+              behaviors: { getBehaviorDetails: { behaviorId } },
+              requestId: 0,
+            };
+            let behavior_details = await call_rpc(connection.conn, details_req);
+            let dets: GetBehaviorDetailsResponse | undefined =
+              behavior_details?.behaviors?.getBehaviorDetails;
+
+            if (dets) {
+              behavior_map[dets.id] = dets;
+            }
           }
-          let details_req = {
-            behaviors: { getBehaviorDetails: { behaviorId } },
-            requestId: 0,
-          };
-          let behavior_details = await call_rpc(connection.conn, details_req);
-          let dets: GetBehaviorDetailsResponse | undefined =
-            behavior_details?.behaviors?.getBehaviorDetails;
 
-          if (dets) {
-            behavior_map[dets.id] = dets;
+          if (!ignore) {
+            setBehaviors(behavior_map);
           }
         }
-
+      } catch (error) {
+        console.error("Failed to load behaviors", error);
         if (!ignore) {
-          setBehaviors(behavior_map);
+          setBehaviors({});
         }
       }
     }
@@ -130,15 +140,22 @@ function useLayouts(): [
         return;
       }
 
-      let response = await call_rpc(connection.conn, {
-        keymap: { getPhysicalLayouts: true },
-      });
+      try {
+        let response = await call_rpc(connection.conn, {
+          keymap: { getPhysicalLayouts: true },
+        });
 
-      if (!ignore) {
-        setLayouts(response?.keymap?.getPhysicalLayouts?.layouts);
-        setSelectedPhysicalLayoutIndex(
-          response?.keymap?.getPhysicalLayouts?.activeLayoutIndex || 0
-        );
+        if (!ignore) {
+          setLayouts(response?.keymap?.getPhysicalLayouts?.layouts);
+          setSelectedPhysicalLayoutIndex(
+            response?.keymap?.getPhysicalLayouts?.activeLayoutIndex || 0
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load physical layouts", error);
+        if (!ignore) {
+          setLayouts(undefined);
+        }
       }
     }
 
@@ -183,9 +200,22 @@ export default function Keyboard() {
     number | undefined
   >(undefined);
   const behaviors = useBehaviors();
+  const [mainView, setMainView] = useState<MainView>("keymap");
 
   const conn = useContext(ConnectionContext);
   const undoRedo = useContext(UndoRedoContext);
+  const runUndoable = useCallback(
+    (description: string, action: DoCallback) => {
+      if (!undoRedo) {
+        return;
+      }
+
+      void undoRedo(action).catch((error) => {
+        console.error(`Failed to ${description}`, error);
+      });
+    },
+    [undoRedo]
+  );
 
   useEffect(() => {
     setSelectedLayerIndex(0);
@@ -198,28 +228,32 @@ export default function Keyboard() {
         return;
       }
 
-      let resp = await call_rpc(conn.conn, {
-        keymap: { setActivePhysicalLayout: selectedPhysicalLayoutIndex },
-      });
+      try {
+        let resp = await call_rpc(conn.conn, {
+          keymap: { setActivePhysicalLayout: selectedPhysicalLayoutIndex },
+        });
 
-      let new_keymap = resp?.keymap?.setActivePhysicalLayout?.ok;
-      if (new_keymap) {
-        setKeymap(new_keymap);
-      } else {
-        console.error(
-          "Failed to set the active physical layout err:",
-          resp?.keymap?.setActivePhysicalLayout?.err
-        );
+        let new_keymap = resp?.keymap?.setActivePhysicalLayout?.ok;
+        if (new_keymap) {
+          setKeymap(new_keymap);
+        } else {
+          console.error(
+            "Failed to set the active physical layout err:",
+            resp?.keymap?.setActivePhysicalLayout?.err
+          );
+        }
+      } catch (error) {
+        console.error("Failed to set the active physical layout", error);
       }
     }
 
-    performSetRequest();
+    void performSetRequest();
   }, [selectedPhysicalLayoutIndex]);
 
   let doSelectPhysicalLayout = useCallback(
     (i: number) => {
       let oldLayout = selectedPhysicalLayoutIndex;
-      undoRedo?.(async () => {
+      runUndoable("change the physical layout", async () => {
         setSelectedPhysicalLayoutIndex(i);
 
         return async () => {
@@ -227,7 +261,7 @@ export default function Keyboard() {
         };
       });
     },
-    [undoRedo, selectedPhysicalLayoutIndex]
+    [runUndoable, selectedPhysicalLayoutIndex]
   );
 
   let doUpdateBinding = useCallback(
@@ -243,7 +277,7 @@ export default function Keyboard() {
       const layerId = keymap.layers[layer].id;
       const keyPosition = selectedKeyPosition;
       const oldBinding = keymap.layers[layer].bindings[keyPosition];
-      undoRedo?.(async () => {
+      runUndoable("update a key binding", async () => {
         if (!conn.conn) {
           throw new Error("Not connected");
         }
@@ -289,7 +323,7 @@ export default function Keyboard() {
         };
       });
     },
-    [conn, keymap, undoRedo, selectedLayerIndex, selectedKeyPosition]
+    [conn, keymap, runUndoable, selectedLayerIndex, selectedKeyPosition]
   );
 
   let selectedBinding = useMemo(() => {
@@ -319,12 +353,12 @@ export default function Keyboard() {
         }
       };
 
-      undoRedo?.(async () => {
+      runUndoable("move a layer", async () => {
         await doMove(start, end);
         return () => doMove(end, start);
       });
     },
-    [undoRedo]
+    [runUndoable]
   );
 
   const addLayer = useCallback(() => {
@@ -378,11 +412,11 @@ export default function Keyboard() {
       }
     }
 
-    undoRedo?.(async () => {
+    runUndoable("add a layer", async () => {
       let index = await doAdd();
       return () => doRemove(index);
     });
-  }, [conn, undoRedo, keymap]);
+  }, [conn, runUndoable, keymap]);
 
   const removeLayer = useCallback(() => {
     async function doRemove(layerIndex: number): Promise<void> {
@@ -444,11 +478,11 @@ export default function Keyboard() {
 
     let index = selectedLayerIndex;
     let layerId = keymap.layers[index].id;
-    undoRedo?.(async () => {
+    runUndoable("remove a layer", async () => {
       await doRemove(index);
       return () => doRestore(layerId, index);
     });
-  }, [conn, undoRedo, selectedLayerIndex]);
+  }, [conn, runUndoable, selectedLayerIndex]);
 
   const changeLayerName = useCallback(
     (id: number, oldName: string, newName: string) => {
@@ -480,14 +514,14 @@ export default function Keyboard() {
         }
       }
 
-      undoRedo?.(async () => {
+      runUndoable("rename a layer", async () => {
         await changeName(id, newName);
         return async () => {
           await changeName(id, oldName);
         };
       });
     },
-    [conn, undoRedo, keymap]
+    [conn, runUndoable, keymap]
   );
 
   useEffect(() => {
@@ -500,75 +534,121 @@ export default function Keyboard() {
     }
   }, [keymap, selectedLayerIndex]);
 
-  return (
-    <div className="grid grid-cols-[auto_1fr] grid-rows-[1fr_minmax(10em,auto)] bg-base-300 max-w-full min-w-0 min-h-0">
-      <div className="p-2 flex flex-col gap-2 bg-base-200 row-span-2">
-        {layouts && (
-          <div className="col-start-3 row-start-1 row-end-2">
-            <PhysicalLayoutPicker
-              layouts={layouts}
-              selectedPhysicalLayoutIndex={selectedPhysicalLayoutIndex}
-              onPhysicalLayoutClicked={doSelectPhysicalLayout}
-            />
-          </div>
-        )}
+  const layerInfo = useMemo(
+    () =>
+      keymap?.layers.map(({ id, name }, li) => ({
+        id,
+        name: name || li.toLocaleString(),
+      })) || [],
+    [keymap]
+  );
 
-        {keymap && (
-          <div className="col-start-1 row-start-1 row-end-2">
-            <LayerPicker
-              layers={keymap.layers}
-              selectedLayerIndex={selectedLayerIndex}
-              onLayerClicked={setSelectedLayerIndex}
-              onLayerMoved={moveLayer}
-              canAdd={(keymap.availableLayers || 0) > 0}
-              canRemove={(keymap.layers?.length || 0) > 1}
-              onAddClicked={addLayer}
-              onRemoveClicked={removeLayer}
-              onLayerNameChanged={changeLayerName}
-            />
-          </div>
-        )}
+  return (
+    <div className="flex flex-col max-w-full min-w-0 min-h-0 h-full">
+      {/* Main View Toggle */}
+      <div className="flex border-b border-gray-300 bg-base-100 shrink-0">
+        <button
+          onClick={() => setMainView("keymap")}
+          className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mainView === "keymap"
+              ? "border-blue-500 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Keymap
+        </button>
+        <button
+          onClick={() => setMainView("settings")}
+          className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mainView === "settings"
+              ? "border-blue-500 text-blue-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Device Settings
+        </button>
       </div>
-      {layouts && keymap && behaviors && (
-        <div className="p-2 col-start-2 row-start-1 grid items-center justify-center relative min-w-0">
-          <KeymapComp
-            keymap={keymap}
-            layout={layouts[selectedPhysicalLayoutIndex]}
-            behaviors={behaviors}
-            scale={keymapScale}
-            selectedLayerIndex={selectedLayerIndex}
-            selectedKeyPosition={selectedKeyPosition}
-            onKeyPositionClicked={setSelectedKeyPosition}
-          />
-          <select
-            className="absolute top-2 right-2 h-8 rounded px-2"
-            value={keymapScale}
-            onChange={(e) => {
-              const value = deserializeLayoutZoom(e.target.value);
-              setKeymapScale(value);
-            }}
-          >
-            <option value="auto">Auto</option>
-            <option value={0.25}>25%</option>
-            <option value={0.5}>50%</option>
-            <option value={0.75}>75%</option>
-            <option value={1}>100%</option>
-            <option value={1.25}>125%</option>
-            <option value={1.5}>150%</option>
-            <option value={2}>200%</option>
-          </select>
+
+      {/* Keymap View */}
+      {mainView === "keymap" && (
+        <div className="grid grid-cols-[auto_1fr] grid-rows-[1fr_minmax(10em,auto)] bg-base-300 max-w-full min-w-0 min-h-0 flex-1">
+          <div className="p-2 flex flex-col gap-2 bg-base-200 row-span-2">
+            {layouts && (
+              <div className="col-start-3 row-start-1 row-end-2">
+                <PhysicalLayoutPicker
+                  layouts={layouts}
+                  selectedPhysicalLayoutIndex={selectedPhysicalLayoutIndex}
+                  onPhysicalLayoutClicked={doSelectPhysicalLayout}
+                />
+              </div>
+            )}
+
+            {keymap && (
+              <div className="col-start-1 row-start-1 row-end-2">
+                <LayerPicker
+                  layers={keymap.layers}
+                  selectedLayerIndex={selectedLayerIndex}
+                  onLayerClicked={setSelectedLayerIndex}
+                  onLayerMoved={moveLayer}
+                  canAdd={(keymap.availableLayers || 0) > 0}
+                  canRemove={(keymap.layers?.length || 0) > 1}
+                  onAddClicked={addLayer}
+                  onRemoveClicked={removeLayer}
+                  onLayerNameChanged={changeLayerName}
+                />
+              </div>
+            )}
+          </div>
+          {layouts && keymap && behaviors && (
+            <div className="p-2 col-start-2 row-start-1 grid items-center justify-center relative min-w-0">
+              <KeymapComp
+                keymap={keymap}
+                layout={layouts[selectedPhysicalLayoutIndex]}
+                behaviors={behaviors}
+                scale={keymapScale}
+                selectedLayerIndex={selectedLayerIndex}
+                selectedKeyPosition={selectedKeyPosition}
+                onKeyPositionClicked={setSelectedKeyPosition}
+              />
+              <select
+                className="absolute top-2 right-2 h-8 rounded px-2"
+                value={keymapScale}
+                onChange={(e) => {
+                  const value = deserializeLayoutZoom(e.target.value);
+                  setKeymapScale(value);
+                }}
+              >
+                <option value="auto">Auto</option>
+                <option value={0.25}>25%</option>
+                <option value={0.5}>50%</option>
+                <option value={0.75}>75%</option>
+                <option value={1}>100%</option>
+                <option value={1.25}>125%</option>
+                <option value={1.5}>150%</option>
+                <option value={2}>200%</option>
+              </select>
+            </div>
+          )}
+          {keymap && selectedBinding && (
+            <div className="p-2 col-start-2 row-start-2 bg-base-200">
+              <BehaviorBindingPicker
+                binding={selectedBinding}
+                behaviors={Object.values(behaviors)}
+                layers={layerInfo}
+                onBindingChanged={doUpdateBinding}
+              />
+            </div>
+          )}
         </div>
       )}
-      {keymap && selectedBinding && (
-        <div className="p-2 col-start-2 row-start-2 bg-base-200">
-          <BehaviorBindingPicker
-            binding={selectedBinding}
+
+      {/* Device Settings View */}
+      {mainView === "settings" && (
+        <div className="flex-1 overflow-hidden">
+          <DeviceSettings
             behaviors={Object.values(behaviors)}
-            layers={keymap.layers.map(({ id, name }, li) => ({
-              id,
-              name: name || li.toLocaleString(),
-            }))}
-            onBindingChanged={doUpdateBinding}
+            layers={layerInfo}
+            totalKeys={layouts?.[selectedPhysicalLayoutIndex]?.keys?.length ?? 0}
           />
         </div>
       )}

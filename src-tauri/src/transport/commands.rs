@@ -7,11 +7,7 @@ use futures::channel::mpsc::SendError;
 use serde::{Deserialize, Serialize};
 
 use tauri::ipc::InvokeBody;
-use tauri::{
-    command,
-    ipc::{Request},
-    State,
-};
+use tauri::{command, ipc::Request, State};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AvailableDevice {
@@ -31,9 +27,8 @@ pub async fn transport_send_data(
 ) -> Result<(), ()> {
     if let InvokeBody::Raw(data) = req.body() {
         let mut lock = state.conn.lock().await;
-
-        let sink = lock.as_mut().unwrap();
-        sink.send(data.clone()).await;
+        let sink = lock.as_mut().ok_or(())?;
+        sink.send(data.clone()).await.map_err(|_| ())?;
     }
 
     Ok(())
@@ -41,7 +36,7 @@ pub async fn transport_send_data(
 
 #[command]
 pub async fn transport_close(
-    req: Request<'_>,
+    _req: Request<'_>,
     state: State<'_, ActiveConnection<'_>>,
 ) -> Result<(), ()> {
     *state.conn.lock().await = None;

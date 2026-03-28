@@ -55,7 +55,7 @@ export const BehaviorBindingPicker = ({
   );
 
   const sortedBehaviors = useMemo(
-    () => behaviors.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    () => [...behaviors].sort((a, b) => a.displayName.localeCompare(b.displayName)),
     [behaviors]
   );
 

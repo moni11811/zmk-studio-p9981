@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2025 ZitaoTech
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+/dts-v1/;
+
+#include "bbp9981.dts"
+#include <common/nordic/nrf52840_uf2_boot_mode.dtsi>

@@ -33,10 +33,17 @@ export function useConnectedDeviceData<T>(
           return;
         }
 
-        let response = response_mapper(await call_rpc(connection.conn, req));
+        try {
+          let response = response_mapper(await call_rpc(connection.conn, req));
 
-        if (!ignore) {
-          setData(response);
+          if (!ignore) {
+            setData(response);
+          }
+        } catch (error) {
+          console.error("Failed to fetch connected device data", error);
+          if (!ignore) {
+            setData(undefined);
+          }
         }
       }
 

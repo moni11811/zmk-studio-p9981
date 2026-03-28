@@ -10,13 +10,13 @@ export async function call_rpc(
   req: Omit<Request, "requestId">
 ): Promise<RequestResponse> {
   console.log("RPC Request", req);
-  return inner_call_rpc(conn, req)
-    .then((r) => {
-      console.log("RPC Response", r);
-      return r;
-    })
-    .catch((e) => {
-      console.error("RPC Error", e);
-      return e;
-    });
+
+  try {
+    const response = await inner_call_rpc(conn, req);
+    console.log("RPC Response", response);
+    return response;
+  } catch (error) {
+    console.error("RPC Error", error);
+    throw error;
+  }
 }

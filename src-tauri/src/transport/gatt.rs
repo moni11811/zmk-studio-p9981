@@ -19,15 +19,27 @@ pub async fn gatt_connect(
     app_handle: AppHandle,
     state: State<'_, super::commands::ActiveConnection<'_>>,
 ) -> Result<bool, String> {
-    let adapter = Adapter::default().await.ok_or("Failed to access the BT adapter".to_string())?;
+    let adapter = Adapter::default()
+        .await
+        .ok_or("Failed to access the BT adapter".to_string())?;
 
-    adapter.wait_available().await.map_err(|e| format!("Failed to wait for the BT adapter access: {}", e.message()))?;
+    adapter
+        .wait_available()
+        .await
+        .map_err(|e| format!("Failed to wait for the BT adapter access: {}", e.message()))?;
 
-    let device_id: DeviceId = serde_json::from_str(&id).unwrap();
-    let d = adapter.open_device(&device_id).await.map_err(|e| format!("Failed to open the device: {}", e.message()))?;
+    let device_id: DeviceId = serde_json::from_str(&id)
+        .map_err(|e| format!("Failed to parse BLE device id: {}", e))?;
+    let d = adapter
+        .open_device(&device_id)
+        .await
+        .map_err(|e| format!("Failed to open the device: {}", e.message()))?;
 
     if !d.is_connected().await {
-        adapter.connect_device(&d).await.map_err(|e| format!("Failed to connect to the device: {}", e.message()))?;
+        adapter
+            .connect_device(&d)
+            .await
+            .map_err(|e| format!("Failed to connect to the device: {}", e.message()))?;
     }
 
     let service = d
@@ -41,7 +53,12 @@ pub async fn gatt_connect(
         let char = s
             .discover_characteristics_with_uuid(RPC_CHRC_UUID)
             .await
-            .map_err(|e| format!("Failed to find the studio service characteristics: {}", e.message()))?
+            .map_err(|e| {
+                format!(
+                    "Failed to find the studio service characteristics: {}",
+                    e.message()
+                )
+            })?
             .get(0)
             .cloned();
 
@@ -53,7 +70,7 @@ pub async fn gatt_connect(
                     use tauri::Emitter;
 
                     while let Some(Ok(vn)) = n.next().await {
-                        ah1.emit("connection_data", vn.clone());
+                        let _ = ah1.emit("connection_data", vn.clone());
                     }
                 }
             });
@@ -86,7 +103,12 @@ pub async fn gatt_connect(
             *state.conn.lock().await = Some(Box::new(send));
             tauri::async_runtime::spawn(async move {
                 while let Some(data) = recv.next().await {
-                    c.write(&data).await.expect("Write uneventfully");
+                    if let Err(err) = c.write(&data).await {
+                        // Transient ATT write failures can happen under bursty traffic.
+                        // Don't force disconnect here; let connection events drive state.
+                        println!("BLE write failed, dropping packet: {}", err.message());
+                        continue;
+                    }
                 }
 
                 disconnect_handle.abort();
@@ -95,7 +117,10 @@ pub async fn gatt_connect(
 
             Ok(true)
         } else {
-            Err("Failed to connect: Unable to locate the required studio GATT characteristic".to_string())
+            Err(
+                "Failed to connect: Unable to locate the required studio GATT characteristic"
+                    .to_string(),
+            )
         }
     } else {
         Err("Failed to connect: Unable to locate the required studio GATT service".to_string())
@@ -133,19 +158,28 @@ pub async fn gatt_list_devices() -> Result<Vec<super::commands::AvailableDevice>
     let mut ret = vec![];
 
     if let Ok(a) = adapter {
-        let devices = a
-            .discover_devices(&[SVC_UUID])
-            .await
-            .expect("GET DEVICES!")
-            .take_until(async_std::task::sleep(Duration::from_secs(2)))
-            .filter_map(|d| ready(d.ok()));
+        let devices = match a.discover_devices(&[SVC_UUID]).await {
+            Ok(devices) => devices,
+            Err(err) => {
+                println!("Failed to enumerate BLE devices: {}", err.message());
+                return Ok(ret);
+            }
+        }
+        .take_until(async_std::task::sleep(Duration::from_secs(2)))
+        .filter_map(|d| ready(d.ok()));
 
         futures::pin_mut!(devices);
 
         while let Some(device) = devices.next().await {
             if check_connected(&a, &device).await {
                 let label = device.name_async().await.unwrap_or("Unknown".to_string());
-                let id = serde_json::to_string(&device.id()).unwrap();
+                let id = match serde_json::to_string(&device.id()) {
+                    Ok(id) => id,
+                    Err(err) => {
+                        println!("Failed to serialize BLE device id: {}", err);
+                        continue;
+                    }
+                };
 
                 ret.push(super::commands::AvailableDevice { label, id });
             } else {

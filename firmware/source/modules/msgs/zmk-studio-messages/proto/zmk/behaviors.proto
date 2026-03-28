@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package zmk.behaviors;
+
+import "zmk/keymap.proto";
+
+message Request {
+    oneof request_type {
+        bool list_all_behaviors = 1;
+        GetBehaviorDetailsRequest get_behavior_details = 2;
+        GetBehaviorRuntimeConfigRequest get_behavior_runtime_config = 3;
+        SetBehaviorRuntimeConfigRequest set_behavior_runtime_config = 4;
+    }
+}
+
+message GetBehaviorDetailsRequest {
+    uint32 behavior_id = 1;
+}
+
+message GetBehaviorRuntimeConfigRequest {
+    uint32 behavior_id = 1;
+}
+
+enum HoldTapFlavor {
+    HOLD_TAP_FLAVOR_HOLD_PREFERRED = 0;
+    HOLD_TAP_FLAVOR_BALANCED = 1;
+    HOLD_TAP_FLAVOR_TAP_PREFERRED = 2;
+    HOLD_TAP_FLAVOR_TAP_UNLESS_INTERRUPTED = 3;
+}
+
+message HoldTapRuntimeConfig {
+    uint32 tapping_term_ms = 1;
+    int32 quick_tap_ms = 2;
+    int32 require_prior_idle_ms = 3;
+    HoldTapFlavor flavor = 4;
+    uint32 hold_behavior_id = 5;
+    uint32 tap_behavior_id = 6;
+}
+
+message TapDanceRuntimeConfig {
+    uint32 tapping_term_ms = 1;
+    repeated zmk.keymap.BehaviorBinding bindings = 2;
+}
+
+message StickyKeyRuntimeConfig {
+    uint32 release_after_ms = 1;
+    bool quick_release = 2;
+    bool lazy = 3;
+    bool ignore_modifiers = 4;
+    uint32 behavior_id = 5;
+}
+
+message BehaviorRuntimeConfig {
+    uint32 behavior_id = 1;
+
+    oneof config_type {
+        HoldTapRuntimeConfig hold_tap = 2;
+        TapDanceRuntimeConfig tap_dance = 3;
+        StickyKeyRuntimeConfig sticky_key = 4;
+    }
+}
+
+message SetBehaviorRuntimeConfigRequest {
+    BehaviorRuntimeConfig config = 1;
+}
+
+enum SetBehaviorRuntimeConfigResponseCode {
+    SET_BEHAVIOR_RUNTIME_CONFIG_OK = 0;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_INVALID_ID = 1;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_INVALID_CONFIG = 2;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_INVALID_BINDING = 3;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_OUT_OF_RANGE = 4;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_NOT_SUPPORTED = 5;
+    SET_BEHAVIOR_RUNTIME_CONFIG_ERR_PERSIST = 6;
+}
+
+message Response {
+    oneof response_type {
+        ListAllBehaviorsResponse list_all_behaviors = 1;
+        GetBehaviorDetailsResponse get_behavior_details = 2;
+        BehaviorRuntimeConfig get_behavior_runtime_config = 3;
+        SetBehaviorRuntimeConfigResponseCode set_behavior_runtime_config = 4;
+    }
+}
+
+message ListAllBehaviorsResponse {
+    repeated uint32 behaviors = 1;
+}
+
+message GetBehaviorDetailsResponse {
+    uint32 id = 1;
+    string display_name = 2;
+    repeated BehaviorBindingParametersSet metadata = 3;
+}
+
+message BehaviorBindingParametersSet {
+    repeated BehaviorParameterValueDescription param1 = 1;
+    repeated BehaviorParameterValueDescription param2 = 2;
+}
+
+message BehaviorParameterValueDescriptionRange {
+    int32 min = 1;
+    int32 max = 2;
+}
+
+message BehaviorParameterNil {}
+message BehaviorParameterLayerId {}
+message BehaviorParameterHidUsage {
+	uint32 keyboard_max = 1;
+	uint32 consumer_max = 2;
+}
+
+message BehaviorParameterValueDescription {
+    string name = 1;
+
+    oneof value_type {
+        BehaviorParameterNil nil = 2;
+        uint32 constant = 3;
+        BehaviorParameterValueDescriptionRange range = 4;
+        BehaviorParameterHidUsage hid_usage = 5;
+        BehaviorParameterLayerId layer_id = 6;
+    }
+}

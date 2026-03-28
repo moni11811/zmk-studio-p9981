@@ -29,6 +29,7 @@ import { valueAfter } from "./misc/async";
 import { AppFooter } from "./AppFooter";
 import { AboutModal } from "./AboutModal";
 import { LicenseNoticeModal } from "./misc/LicenseNoticeModal";
+import { bb9981Rpc, setBb9981RpcConnection } from "./rpc/bb9981Rpc";
 
 declare global {
   interface Window {
@@ -179,6 +180,10 @@ function App() {
   });
 
   useEffect(() => {
+    setBb9981RpcConnection(conn.conn);
+  }, [conn]);
+
+  useEffect(() => {
     if (!conn) {
       reset();
       setLockState(LockState.ZMK_STUDIO_CORE_LOCK_STATE_LOCKED);
@@ -189,93 +194,128 @@ function App() {
         return;
       }
 
-      let locked_resp = await call_rpc(conn.conn, {
-        core: { getLockState: true },
-      });
+      try {
+        let locked_resp = await call_rpc(conn.conn, {
+          core: { getLockState: true },
+        });
 
-      setLockState(
-        locked_resp.core?.getLockState ||
-          LockState.ZMK_STUDIO_CORE_LOCK_STATE_LOCKED
-      );
+        setLockState(
+          locked_resp.core?.getLockState ||
+            LockState.ZMK_STUDIO_CORE_LOCK_STATE_LOCKED
+        );
+      } catch (error) {
+        console.error("Failed to update lock state", error);
+        setLockState(LockState.ZMK_STUDIO_CORE_LOCK_STATE_LOCKED);
+      }
     }
 
-    updateLockState();
+    void updateLockState();
   }, [conn, setLockState]);
 
   const save = useCallback(() => {
     async function doSave() {
-      if (!conn.conn) {
-        return;
-      }
+      try {
+        if (!conn.conn) {
+          return;
+        }
 
-      let resp = await call_rpc(conn.conn, { keymap: { saveChanges: true } });
-      if (!resp.keymap?.saveChanges || resp.keymap?.saveChanges.err) {
-        console.error("Failed to save changes", resp.keymap?.saveChanges);
+        let resp = await call_rpc(conn.conn, { keymap: { saveChanges: true } });
+        if (!resp.keymap?.saveChanges || resp.keymap?.saveChanges.err) {
+          console.error("Failed to save changes", resp.keymap?.saveChanges);
+        }
+
+        await bb9981Rpc.macros.saveChanges();
+        await bb9981Rpc.combos.saveChanges();
+        await bb9981Rpc.settings.saveChanges();
+      } catch (error) {
+        console.error("Failed to save pending changes", error);
       }
     }
 
-    doSave();
+    void doSave();
   }, [conn]);
 
   const discard = useCallback(() => {
     async function doDiscard() {
-      if (!conn.conn) {
-        return;
-      }
+      try {
+        if (!conn.conn) {
+          return;
+        }
 
-      let resp = await call_rpc(conn.conn, {
-        keymap: { discardChanges: true },
-      });
-      if (!resp.keymap?.discardChanges) {
-        console.error("Failed to discard changes", resp);
-      }
+        let resp = await call_rpc(conn.conn, {
+          keymap: { discardChanges: true },
+        });
+        if (!resp.keymap?.discardChanges) {
+          console.error("Failed to discard changes", resp);
+        }
 
-      reset();
-      setConn({ conn: conn.conn });
+        await bb9981Rpc.macros.discardChanges();
+        await bb9981Rpc.combos.discardChanges();
+        await bb9981Rpc.settings.discardChanges();
+
+        reset();
+        setConn({ conn: conn.conn });
+      } catch (error) {
+        console.error("Failed to discard pending changes", error);
+      }
     }
 
-    doDiscard();
+    void doDiscard();
   }, [conn]);
 
   const resetSettings = useCallback(() => {
     async function doReset() {
-      if (!conn.conn) {
-        return;
-      }
+      try {
+        if (!conn.conn) {
+          return;
+        }
 
-      let resp = await call_rpc(conn.conn, {
-        core: { resetSettings: true },
-      });
-      if (!resp.core?.resetSettings) {
-        console.error("Failed to settings reset", resp);
-      }
+        let resp = await call_rpc(conn.conn, {
+          core: { resetSettings: true },
+        });
+        if (!resp.core?.resetSettings) {
+          console.error("Failed to settings reset", resp);
+        }
 
-      reset();
-      setConn({ conn: conn.conn });
+        reset();
+        setConn({ conn: conn.conn });
+      } catch (error) {
+        console.error("Failed to reset settings", error);
+      }
     }
 
-    doReset();
+    void doReset();
   }, [conn]);
 
   const disconnect = useCallback(() => {
     async function doDisconnect() {
-      if (!conn.conn) {
-        return;
-      }
+      try {
+        if (!conn.conn) {
+          return;
+        }
 
-      await conn.conn.request_writable.close();
-      connectionAbort.abort("User disconnected");
-      setConnectionAbort(new AbortController());
+        await conn.conn.request_writable.close();
+        connectionAbort.abort("User disconnected");
+        setConnectionAbort(new AbortController());
+      } catch (error) {
+        console.error("Failed to disconnect cleanly", error);
+      }
     }
 
-    doDisconnect();
+    void doDisconnect();
   }, [conn]);
 
   const onConnect = useCallback(
     (t: RpcTransport) => {
       const ac = new AbortController();
       setConnectionAbort(ac);
-      connect(t, setConn, setConnectedDeviceName, ac.signal);
+      void connect(t, setConn, setConnectedDeviceName, ac.signal).catch(
+        (error) => {
+          console.error("Failed to establish Studio connection", error);
+          setConnectedDeviceName(undefined);
+          setConn({ conn: null });
+        }
+      );
     },
     [setConn, setConnectedDeviceName, setConnectedDeviceName]
   );

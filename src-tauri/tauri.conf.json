@@ -29,11 +29,11 @@
     ],
     "longDescription": "",
     "macOS": {
-      "entitlements": null,
+      "entitlements": "zmk-studio.entitlements",
       "exceptionDomain": "",
       "frameworks": [],
       "providerShortName": null,
-      "signingIdentity": "-"
+      "signingIdentity": null
     },
     "resources": [],
     "shortDescription": "",

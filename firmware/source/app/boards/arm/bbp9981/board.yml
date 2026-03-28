@@ -1,0 +1,7 @@
+board:
+  name: bbp9981
+  vendor: zitaotech
+  socs:
+    - name: nrf52840
+      variants:
+        - name: zmk
