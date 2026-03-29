@@ -4,6 +4,10 @@ Public, sanitized fork of ZMK Studio for the BBP9981 / P9981 keyboard family.
 
 This fork is focused on making the BBP9981 usable with a desktop Studio app and matching firmware, while keeping the public repository safe to share.
 
+## Current Issues
+
+- Boot reliability: seems to improve by clicking the trackpad right after turning on.
+
 ## Keep My Robots Fed
 
 If this fork saves you time and you want to keep my robots fed:
