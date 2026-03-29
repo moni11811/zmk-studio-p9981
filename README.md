@@ -2,6 +2,12 @@
 
 Public, sanitized fork of ZMK Studio for the BBP9981 / P9981 keyboard family.
 
+## Keep My Robots Fed
+
+If this fork saves you time and you want to keep my robots fed:
+
+![Keep my robots fed](.github/assets/keep-my-robots-fed.png)
+
 This repository is intentionally trimmed down for sharing:
 
 - the ZMK Studio app source is at the repository root
@@ -17,6 +23,7 @@ This public repo does not include:
 - prebuilt app binaries committed into the repository tree
 
 The repository tree stays source-only. Public desktop binaries are published as GitHub Release assets built from this sanitized repo on GitHub-hosted runners, so they do not carry local workspace paths from the original development machine. The firmware UF2 is also included in `firmware/releases/` for convenience.
+
 ## App
 
 The app source at the repository root contains the BBP9981-focused Studio changes, including:
@@ -78,11 +85,14 @@ If you are packaging a fresh app binary from this source and want to publish tha
 
 ## Releases
 
-The `v1` release is intended to contain:
+The published `v1` release contains:
 
-- a sanitized macOS build generated on GitHub Actions
-- a Windows executable generated on GitHub Actions
+- a universal macOS DMG
+- an aarch64 macOS sanitized DMG
+- a Windows setup executable
+- a Windows portable executable
 - the matching firmware UF2
+- `SHA256SUMS.txt` for the release assets
 
 ## Upstream
 
