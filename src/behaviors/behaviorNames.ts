@@ -5,6 +5,53 @@ import type {
 
 type BehaviorLike = Pick<GetBehaviorDetailsResponse, "id" | "displayName" | "metadata">;
 
+function normalizeBehaviorToken(name?: string): string {
+  return name?.trim().replace(/^&+/, "").toLowerCase() ?? "";
+}
+
+function getKnownBehaviorLabel(token: string): string | undefined {
+  switch (token) {
+    case "kp":
+      return "Key Press";
+    case "bt":
+      return "Bluetooth";
+    case "out":
+      return "Output Selection";
+    case "rgb_ug":
+      return "RGB Underglow";
+    case "bl":
+      return "Keyboard Backlight";
+    case "trans":
+      return "Transparent";
+    case "none":
+      return "No Action";
+    case "mo":
+      return "Momentary Layer";
+    case "to":
+      return "To Layer";
+    case "tog":
+      return "Toggle Layer";
+    case "lt":
+      return "Layer-Tap";
+    case "mt":
+      return "Mod-Tap";
+    case "sk":
+      return "Sticky Key";
+    case "sl":
+      return "Sticky Layer";
+    case "td":
+      return "Tap-Dance";
+    case "bootloader":
+      return "Bootloader";
+    case "sys_reset":
+      return "System Reset";
+    case "reset":
+      return "Reset";
+    default:
+      return undefined;
+  }
+}
+
 function hasHidUsage(metadata: BehaviorBindingParametersSet[]): boolean {
   return metadata.some((set) => set.param1.some((value) => value.hidUsage));
 }
@@ -90,6 +137,11 @@ function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | u
 
 export function getBehaviorLabel(behavior: BehaviorLike): string {
   const trimmed = behavior.displayName?.trim();
+  const knownLabel = getKnownBehaviorLabel(normalizeBehaviorToken(trimmed));
+  if (knownLabel) {
+    return knownLabel;
+  }
+
   if (trimmed) {
     return trimmed;
   }

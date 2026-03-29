@@ -1,0 +1,109 @@
+// Copyright (c) 2024 The ZMK Contributors
+// SPDX-License-Identifier: MIT
+
+syntax = "proto3";
+
+package zmk.macros;
+
+enum MacroStepType {
+  TAP = 0;
+  PRESS = 1;
+  RELEASE = 2;
+  WAIT = 3;
+  PAUSE_FOR_RELEASE = 4;
+}
+
+message MacroStep {
+  MacroStepType type = 1;
+  uint32 behavior_id = 2;
+  uint32 param1 = 3;
+  uint32 param2 = 4;
+  uint32 duration_ms = 5;
+}
+
+message MacroSummary {
+  uint32 id = 1;
+  string name = 2;
+  uint32 step_count = 3;
+}
+
+message MacroDetails {
+  uint32 id = 1;
+  string name = 2;
+  repeated MacroStep steps = 3;
+  uint32 default_wait_ms = 4;
+  uint32 default_tap_ms = 5;
+}
+
+// Request messages
+message GetMacroDetailsRequest {
+  uint32 macro_id = 1;
+}
+
+message SetMacroStepsRequest {
+  uint32 macro_id = 1;
+  string name = 2;
+  repeated MacroStep steps = 3;
+  uint32 default_wait_ms = 4;
+  uint32 default_tap_ms = 5;
+}
+
+message DeleteMacroRequest {
+  uint32 macro_id = 1;
+}
+
+message Request {
+  oneof request_type {
+    bool list_all_macros = 1;
+    GetMacroDetailsRequest get_macro_details = 2;
+    SetMacroStepsRequest set_macro_steps = 3;
+    bool create_macro = 4;
+    DeleteMacroRequest delete_macro = 5;
+    bool save_changes = 6;
+    bool discard_changes = 7;
+    bool check_unsaved_changes = 8;
+  }
+}
+
+// Response messages
+message ListAllMacrosResponse {
+  repeated MacroSummary macros = 1;
+}
+
+enum SetMacroStepsResponseCode {
+  SET_MACRO_STEPS_OK = 0;
+  SET_MACRO_STEPS_ERR_INVALID_ID = 1;
+  SET_MACRO_STEPS_ERR_TOO_MANY_STEPS = 2;
+}
+
+message CreateMacroResponse {
+  oneof result {
+    uint32 ok = 1;
+    bool err = 2;
+  }
+}
+
+enum SaveChangesErrorCode {
+  SAVE_CHANGES_OK = 0;
+  SAVE_CHANGES_ERR_GENERIC = 1;
+}
+
+message Response {
+  oneof response_type {
+    ListAllMacrosResponse list_all_macros = 1;
+    MacroDetails get_macro_details = 2;
+    SetMacroStepsResponseCode set_macro_steps = 3;
+    CreateMacroResponse create_macro = 4;
+    bool delete_macro = 5;
+    SaveChangesErrorCode save_changes = 6;
+    bool discard_changes = 7;
+    bool check_unsaved_changes = 8;
+  }
+}
+
+// Notifications
+message Notification {
+  oneof notification_type {
+    bool unsaved_changes_status_changed = 1;
+  }
+}

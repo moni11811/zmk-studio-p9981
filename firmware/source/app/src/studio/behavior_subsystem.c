@@ -1306,13 +1306,6 @@ static zmk_studio_Response rename_behavior(const zmk_studio_Request *req) {
                 zmk_behaviors_RenameBehaviorResponseCode_RENAME_BEHAVIOR_ERR_PERSIST);
         }
     } else {
-        struct behavior_runtime_config runtime = {0};
-        if (behavior_get_runtime_config(device, &runtime) < 0) {
-            return BEHAVIOR_RESPONSE(
-                rename_behavior,
-                zmk_behaviors_RenameBehaviorResponseCode_RENAME_BEHAVIOR_ERR_NOT_USER_DEFINED);
-        }
-
         struct behavior_metadata_override *override =
             find_behavior_metadata_override(behavior_name, true);
         if (!override) {

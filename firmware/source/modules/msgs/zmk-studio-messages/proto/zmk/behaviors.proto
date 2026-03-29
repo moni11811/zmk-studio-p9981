@@ -3,6 +3,7 @@ syntax = "proto3";
 package zmk.behaviors;
 
 import "zmk/keymap.proto";
+import "nanopb.proto";
 
 message Request {
     oneof request_type {
@@ -10,6 +11,9 @@ message Request {
         GetBehaviorDetailsRequest get_behavior_details = 2;
         GetBehaviorRuntimeConfigRequest get_behavior_runtime_config = 3;
         SetBehaviorRuntimeConfigRequest set_behavior_runtime_config = 4;
+        CreateBehaviorRequest create_behavior = 5;
+        DeleteBehaviorRequest delete_behavior = 6;
+        RenameBehaviorRequest rename_behavior = 7;
     }
 }
 
@@ -64,6 +68,20 @@ message SetBehaviorRuntimeConfigRequest {
     BehaviorRuntimeConfig config = 1;
 }
 
+message CreateBehaviorRequest {
+    string display_name = 1 [(nanopb).max_length = 47];
+    BehaviorRuntimeConfig config = 2;
+}
+
+message DeleteBehaviorRequest {
+    uint32 behavior_id = 1;
+}
+
+message RenameBehaviorRequest {
+    uint32 behavior_id = 1;
+    string display_name = 2 [(nanopb).max_length = 47];
+}
+
 enum SetBehaviorRuntimeConfigResponseCode {
     SET_BEHAVIOR_RUNTIME_CONFIG_OK = 0;
     SET_BEHAVIOR_RUNTIME_CONFIG_ERR_INVALID_ID = 1;
@@ -74,12 +92,47 @@ enum SetBehaviorRuntimeConfigResponseCode {
     SET_BEHAVIOR_RUNTIME_CONFIG_ERR_PERSIST = 6;
 }
 
+enum CreateBehaviorResponseCode {
+    CREATE_BEHAVIOR_OK = 0;
+    CREATE_BEHAVIOR_ERR_INVALID_NAME = 1;
+    CREATE_BEHAVIOR_ERR_INVALID_CONFIG = 2;
+    CREATE_BEHAVIOR_ERR_INVALID_BINDING = 3;
+    CREATE_BEHAVIOR_ERR_NO_SLOT = 4;
+    CREATE_BEHAVIOR_ERR_PERSIST = 5;
+}
+
+enum DeleteBehaviorResponseCode {
+    DELETE_BEHAVIOR_OK = 0;
+    DELETE_BEHAVIOR_ERR_INVALID_ID = 1;
+    DELETE_BEHAVIOR_ERR_NOT_USER_DEFINED = 2;
+    DELETE_BEHAVIOR_ERR_IN_USE = 3;
+    DELETE_BEHAVIOR_ERR_PERSIST = 4;
+}
+
+enum RenameBehaviorResponseCode {
+    RENAME_BEHAVIOR_OK = 0;
+    RENAME_BEHAVIOR_ERR_INVALID_ID = 1;
+    RENAME_BEHAVIOR_ERR_NOT_USER_DEFINED = 2;
+    RENAME_BEHAVIOR_ERR_INVALID_NAME = 3;
+    RENAME_BEHAVIOR_ERR_PERSIST = 4;
+}
+
+message CreateBehaviorResponse {
+    oneof result {
+        uint32 ok = 1;
+        CreateBehaviorResponseCode err = 2;
+    }
+}
+
 message Response {
     oneof response_type {
         ListAllBehaviorsResponse list_all_behaviors = 1;
         GetBehaviorDetailsResponse get_behavior_details = 2;
         BehaviorRuntimeConfig get_behavior_runtime_config = 3;
         SetBehaviorRuntimeConfigResponseCode set_behavior_runtime_config = 4;
+        CreateBehaviorResponse create_behavior = 5;
+        DeleteBehaviorResponseCode delete_behavior = 6;
+        RenameBehaviorResponseCode rename_behavior = 7;
     }
 }
 
@@ -91,6 +144,7 @@ message GetBehaviorDetailsResponse {
     uint32 id = 1;
     string display_name = 2;
     repeated BehaviorBindingParametersSet metadata = 3;
+    bool is_user_defined = 4;
 }
 
 message BehaviorBindingParametersSet {

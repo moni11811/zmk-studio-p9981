@@ -3,6 +3,7 @@ import {
   GetBehaviorDetailsResponse,
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 import { BehaviorParametersPicker } from "./BehaviorParametersPicker";
+import { getBehaviorLabel } from "./behaviorNames";
 
 export enum MacroStepType {
   TAP = "tap",
@@ -55,8 +56,8 @@ export const MacroEditor = ({
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
 
   const sortedBehaviors = behaviors
-    .filter((b) => b.displayName)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    .filter((b) => getBehaviorLabel(b))
+    .sort((a, b) => getBehaviorLabel(a).localeCompare(getBehaviorLabel(b)));
 
   const updateName = useCallback(
     (name: string) => setMacro((m) => ({ ...m, name })),
@@ -118,7 +119,9 @@ export const MacroEditor = ({
 
   const getBehaviorName = (id?: number) =>
     id !== undefined
-      ? behaviors.find((b) => b.id === id)?.displayName || `Behavior ${id}`
+      ? behaviors.find((b) => b.id === id)
+        ? getBehaviorLabel(behaviors.find((b) => b.id === id)!)
+        : `Behavior ${id}`
       : "None";
 
   const getStepSummary = (step: MacroStep): string => {
@@ -320,7 +323,7 @@ export const MacroEditor = ({
                   <option value="">Select a behavior</option>
                   {sortedBehaviors.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.displayName}
+                      {getBehaviorLabel(b)}
                     </option>
                   ))}
                 </select>

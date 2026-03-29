@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   GetBehaviorDetailsResponse,
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
+import { getBehaviorLabel } from "./behaviorNames";
 
 export interface ComboConfig {
   id: number;
@@ -37,8 +38,8 @@ export const ComboEditor = ({
   const [isPickingKey, setIsPickingKey] = useState(false);
 
   const sortedBehaviors = behaviors
-    .filter((b) => b.displayName)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    .filter((b) => getBehaviorLabel(b))
+    .sort((a, b) => getBehaviorLabel(a).localeCompare(getBehaviorLabel(b)));
 
   const updateField = useCallback(
     <K extends keyof ComboConfig>(field: K, value: ComboConfig[K]) => {
@@ -175,7 +176,7 @@ export const ComboEditor = ({
           <option value={0}>Select a behavior</option>
           {sortedBehaviors.map((b) => (
             <option key={b.id} value={b.id}>
-              {b.displayName}
+              {getBehaviorLabel(b)}
             </option>
           ))}
         </select>

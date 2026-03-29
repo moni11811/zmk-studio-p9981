@@ -15,6 +15,7 @@
 #include <zmk/backlight.h>
 #include <zmk/activity.h>
 #include <zmk/bbp9981_trackpad.h>
+#include <zmk/usb.h>
 #include "trackpad_led.h"
 #include "a320_0x57.h"
 
@@ -62,6 +63,7 @@ static bool usb_flash_state = false;
 static bool usb_mode = false;
 static bool led_globally_enabled = true;
 static uint32_t led_auto_off_delay_ms = AUTO_OFF_DELAY_MS;
+static uint8_t usb_power_mode = ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF;
 
 static void set_led_brightness(uint8_t level) {
     if (!device_is_ready(led_dev)) {
@@ -77,7 +79,7 @@ static void set_led_brightness(uint8_t level) {
 }
 
 static void usb_flash_work_handler(struct k_work *work) {
-    if (!usb_mode) {
+    if (!usb_mode || usb_power_mode != ZMK_TRACKPAD_LED_USB_POWER_MODE_BLINK) {
         set_led_brightness(0);
         return;
     }
@@ -119,7 +121,8 @@ static void animation_work_handler(struct k_work *work) {
 }
 
 static void polling_work_handler(struct k_work *work) {
-    enum zmk_transport transport = zmk_endpoint_get_selected().transport;
+    bool usb_power_active =
+        zmk_usb_is_powered() && usb_power_mode != ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF;
     bool current_capslock = zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled() &&
                             (zmk_hid_indicators_get_current_profile() & HID_INDICATORS_CAPS_LOCK);
     bool current_touch = tp_is_touched();
@@ -136,13 +139,18 @@ static void polling_work_handler(struct k_work *work) {
     }
 
     /* ---------------- USB Mode ---------------- */
-    if (transport == ZMK_TRANSPORT_USB) {
+    if (usb_power_active) {
         if (!usb_mode) {
-            /* blink */
             usb_mode = true;
             usb_flash_state = false;
+            LOG_INF("Entered USB power LED mode");
+        }
+
+        if (usb_power_mode == ZMK_TRACKPAD_LED_USB_POWER_MODE_SOLID) {
+            k_work_cancel_delayable(&usb_flash_work);
+            set_led_brightness(BRT_MAX);
+        } else {
             k_work_reschedule(&usb_flash_work, K_NO_WAIT);
-            LOG_INF("Entered USB flash mode");
         }
         k_work_reschedule(&polling_work, K_MSEC(POLLING_INTERVAL_MS));
         return;
@@ -153,7 +161,7 @@ static void polling_work_handler(struct k_work *work) {
         usb_mode = false;
         k_work_cancel_delayable(&usb_flash_work);
         set_led_brightness(0);
-        LOG_INF("Exited USB flash mode");
+        LOG_INF("Exited USB power LED mode");
     }
 
     if (current_active != keyboard_active) {
@@ -266,6 +274,37 @@ void zmk_trackpad_led_set_idle_timeout_ms(uint32_t timeout_ms) {
 
     led_auto_off_delay_ms = MAX(timeout_ms, 1000U);
 }
+
+void zmk_trackpad_led_set_usb_power_mode(uint8_t mode) {
+    switch (mode) {
+    case ZMK_TRACKPAD_LED_USB_POWER_MODE_SOLID:
+    case ZMK_TRACKPAD_LED_USB_POWER_MODE_BLINK:
+        usb_power_mode = mode;
+        break;
+    default:
+        usb_power_mode = ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF;
+        break;
+    }
+
+    if (!usb_mode) {
+        k_work_reschedule(&polling_work, K_NO_WAIT);
+        return;
+    }
+
+    if (usb_power_mode == ZMK_TRACKPAD_LED_USB_POWER_MODE_SOLID) {
+        k_work_cancel_delayable(&usb_flash_work);
+        set_led_brightness(BRT_MAX);
+    } else if (usb_power_mode == ZMK_TRACKPAD_LED_USB_POWER_MODE_BLINK) {
+        usb_flash_state = false;
+        k_work_reschedule(&usb_flash_work, K_NO_WAIT);
+    } else {
+        usb_mode = false;
+        k_work_cancel_delayable(&usb_flash_work);
+        set_led_brightness(0);
+    }
+}
+
+uint8_t zmk_trackpad_led_get_usb_power_mode(void) { return usb_power_mode; }
 
 static int indicator_tp_init(void) {
     if (!device_is_ready(led_dev)) {

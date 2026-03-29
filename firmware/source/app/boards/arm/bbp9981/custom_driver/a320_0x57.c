@@ -55,6 +55,7 @@ static uint8_t runtime_scroll_speed = 5;
 static uint16_t runtime_poll_interval_ms = CONFIG_A320_POLL_INTERVAL_MS;
 static bool runtime_precision_mode_enabled = true;
 static bool runtime_scroll_mode_switch_enabled = true;
+static uint8_t runtime_scroll_profile = ZMK_BBP9981_SCROLL_PROFILE_CLASSIC_2D;
 
 static void reset_scroll_state(void) {
     sum_dx = 0;
@@ -69,7 +70,7 @@ static void reset_scroll_state(void) {
  * baseline behavior so changing the setting cannot make scrolling slower or
  * "disappear" again.
  */
-static int16_t boost_vertical_scroll_step(int16_t value, uint8_t speed) {
+static int16_t boost_scroll_axis_step(int16_t value, uint8_t speed) {
     static const uint16_t multiplier_q8[] = {256, 256, 256, 256, 256,
                                              320, 384, 448, 512, 640};
 
@@ -85,6 +86,68 @@ static int16_t boost_vertical_scroll_step(int16_t value, uint8_t speed) {
     scaled = MAX(1, scaled);
 
     return value < 0 ? -scaled : scaled;
+}
+
+static int16_t signed_div_round(int16_t value, uint8_t divisor) {
+    if (value == 0 || divisor == 0) {
+        return 0;
+    }
+
+    int32_t adjusted = value;
+    if (adjusted > 0) {
+        adjusted += divisor / 2;
+    } else {
+        adjusted -= divisor / 2;
+    }
+
+    int16_t scaled = adjusted / divisor;
+    if (scaled == 0) {
+        return value > 0 ? 1 : -1;
+    }
+
+    return scaled;
+}
+
+static void calculate_classic_scroll(int16_t sx, int16_t sy, int16_t *scroll_x, int16_t *scroll_y) {
+    if (abs(sy) >= 128) {
+        *scroll_x = -sx / 24;
+        *scroll_y = -sy / 24;
+    } else if (abs(sy) >= 64) {
+        *scroll_x = -sx / 16;
+        *scroll_y = -sy / 16;
+    } else if (abs(sy) >= 32) {
+        *scroll_x = -sx / 12;
+        *scroll_y = -sy / 12;
+    } else if (abs(sy) >= 21) {
+        *scroll_x = -sx / 8;
+        *scroll_y = -sy / 8;
+    } else if (abs(sy) >= 3) {
+        *scroll_x = (sx > 0) ? -1 : (sx < 0) ? 1 : 0;
+        *scroll_y = (sy > 0) ? -1 : (sy < 0) ? 1 : 0;
+    } else {
+        *scroll_x = (sx > 0) ? -1 : (sx < 0) ? 1 : 0;
+        *scroll_y = 0;
+    }
+}
+
+static void calculate_analog_scroll(int16_t sx, int16_t sy, int16_t *scroll_x, int16_t *scroll_y) {
+    int16_t magnitude = MAX(abs(sx), abs(sy));
+    uint8_t divisor = 24;
+
+    if (magnitude >= 128) {
+        divisor = 12;
+    } else if (magnitude >= 96) {
+        divisor = 14;
+    } else if (magnitude >= 64) {
+        divisor = 16;
+    } else if (magnitude >= 32) {
+        divisor = 18;
+    } else if (magnitude >= 12) {
+        divisor = 20;
+    }
+
+    *scroll_x = signed_div_round(-sx, divisor);
+    *scroll_y = signed_div_round(-sy, divisor);
 }
 
 /*
@@ -237,27 +300,16 @@ static void a320_poll_work_handler(struct k_work *work) {
 
                     int16_t scroll_x = 0, scroll_y = 0;
 
-                    if (abs(sy) >= 128) {
-                        scroll_x = -sx / 24;
-                        scroll_y = -sy / 24;
-                    } else if (abs(sy) >= 64) {
-                        scroll_x = -sx / 16;
-                        scroll_y = -sy / 16;
-                    } else if (abs(sy) >= 32) {
-                        scroll_x = -sx / 12;
-                        scroll_y = -sy / 12;
-                    } else if (abs(sy) >= 21) {
-                        scroll_x = -sx / 8;
-                        scroll_y = -sy / 8;
-                    } else if (abs(sy) >= 3) {
-                        scroll_x = (sx > 0) ? -1 : (sx < 0) ? 1 : 0;
-                        scroll_y = (sy > 0) ? -1 : (sy < 0) ? 1 : 0;
+                    if (runtime_scroll_profile == ZMK_BBP9981_SCROLL_PROFILE_ANALOG_3D) {
+                        calculate_analog_scroll(sx, sy, &scroll_x, &scroll_y);
                     } else {
-                        scroll_x = (sx > 0) ? -1 : (sx < 0) ? 1 : 0;
-                        scroll_y = 0;
+                        calculate_classic_scroll(sx, sy, &scroll_x, &scroll_y);
                     }
 
-                    scroll_y = boost_vertical_scroll_step(scroll_y, runtime_scroll_speed);
+                    if (runtime_scroll_profile == ZMK_BBP9981_SCROLL_PROFILE_ANALOG_3D) {
+                        scroll_x = boost_scroll_axis_step(scroll_x, runtime_scroll_speed);
+                    }
+                    scroll_y = boost_scroll_axis_step(scroll_y, runtime_scroll_speed);
 
                     if (runtime_scroll_inverted) {
                         scroll_y = -scroll_y;
@@ -391,5 +443,13 @@ void zmk_bbp9981_trackpad_set_scroll_mode_switch_enabled(bool enabled) {
 bool zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled(void) {
     return runtime_scroll_mode_switch_enabled;
 }
+
+void zmk_bbp9981_trackpad_set_scroll_profile(uint8_t profile) {
+    runtime_scroll_profile = profile == ZMK_BBP9981_SCROLL_PROFILE_ANALOG_3D
+                                 ? ZMK_BBP9981_SCROLL_PROFILE_ANALOG_3D
+                                 : ZMK_BBP9981_SCROLL_PROFILE_CLASSIC_2D;
+    reset_scroll_state();
+}
+uint8_t zmk_bbp9981_trackpad_get_scroll_profile(void) { return runtime_scroll_profile; }
 
 bool tp_is_touched(void) { return zmk_bbp9981_trackpad_is_touched(); }

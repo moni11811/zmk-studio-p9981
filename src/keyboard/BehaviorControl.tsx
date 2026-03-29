@@ -9,6 +9,11 @@ import type { BehaviorBinding } from "@zmkfirmware/zmk-studio-ts-client/keymap";
 
 import { BehaviorBindingPicker } from "../behaviors/BehaviorBindingPicker";
 import {
+  deleteBehaviorDisplayNameOverride,
+  setBehaviorDisplayNameOverride,
+} from "../behaviors/behaviorDisplayNameOverrides";
+import { getBehaviorLabel } from "../behaviors/behaviorNames";
+import {
   bb9981Rpc,
   CreateBehaviorResponseCode,
   DeleteBehaviorResponseCode,
@@ -206,7 +211,8 @@ function findBehaviorByDisplayName(
 ): StudioBehaviorDetails | undefined {
   return behaviors.find(
     (behavior) =>
-      normalizeBehaviorName(behavior.displayName) === normalizeBehaviorName(displayName)
+      normalizeBehaviorName(getBehaviorLabel(behavior)) ===
+      normalizeBehaviorName(displayName)
   );
 }
 
@@ -282,8 +288,9 @@ function createDefaultTapDanceConfig(
   behaviors: StudioBehaviorDetails[]
 ): TapDanceBehaviorConfig {
   const noneBehavior =
+    findBehaviorByDisplayName(behaviors, "No Action") ??
     findBehaviorByDisplayName(behaviors, "None") ??
-    behaviors.find((behavior) => behavior.displayName !== "Transparent") ??
+    behaviors.find((behavior) => getBehaviorLabel(behavior) !== "Transparent") ??
     behaviors[0];
 
   return {
@@ -401,14 +408,20 @@ function behaviorTemplateLabel(
   behavior: StudioBehaviorDetails | undefined,
   behaviorMap: Map<number, StudioBehaviorDetails>
 ): string {
-  const displayName = normalizeBehaviorName(behavior?.displayName);
+  const displayName = normalizeBehaviorName(
+    behavior ? getBehaviorLabel(behavior) : undefined
+  );
 
   if (config.type === "holdTap") {
     const holdDisplayName = normalizeBehaviorName(
-      behaviorMap.get(config.holdBehaviorId)?.displayName
+      behaviorMap.get(config.holdBehaviorId)
+        ? getBehaviorLabel(behaviorMap.get(config.holdBehaviorId)!)
+        : undefined
     );
     const tapDisplayName = normalizeBehaviorName(
-      behaviorMap.get(config.tapBehaviorId)?.displayName
+      behaviorMap.get(config.tapBehaviorId)
+        ? getBehaviorLabel(behaviorMap.get(config.tapBehaviorId)!)
+        : undefined
     );
 
     if (
@@ -434,7 +447,9 @@ function behaviorTemplateLabel(
 
   if (config.type === "stickyKey") {
     const wrappedDisplayName = normalizeBehaviorName(
-      behaviorMap.get(config.bindingBehaviorId)?.displayName
+      behaviorMap.get(config.bindingBehaviorId)
+        ? getBehaviorLabel(behaviorMap.get(config.bindingBehaviorId)!)
+        : undefined
     );
 
     if (
@@ -573,7 +588,7 @@ function UnaryBehaviorSelect({
         >
           {filteredOptions.map((behavior) => (
             <option key={behavior.id} value={behavior.id}>
-              {behavior.displayName}
+              {getBehaviorLabel(behavior)}
             </option>
           ))}
         </select>
@@ -919,7 +934,10 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
   );
 
   const sortedBehaviors = useMemo(
-    () => [...behaviors].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    () =>
+      [...behaviors].sort((a, b) =>
+        getBehaviorLabel(a).localeCompare(getBehaviorLabel(b))
+      ),
     [behaviors]
   );
 
@@ -1010,10 +1028,14 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
       );
       setNameDrafts(
         Object.fromEntries(
-          nextConfigs.map((config) => [
-            config.behaviorId,
-            behaviorMap.get(config.behaviorId)?.displayName ?? `Behavior ${config.behaviorId}`,
-          ])
+          nextConfigs.map((config) => {
+            const behavior = behaviorMap.get(config.behaviorId);
+
+            return [
+              config.behaviorId,
+              behavior ? getBehaviorLabel(behavior) : `Behavior ${config.behaviorId}`,
+            ];
+          })
         )
       );
     } catch (runtimeError) {
@@ -1053,7 +1075,9 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     setNameDrafts((current) => ({
       ...current,
       [behaviorId]:
-        behaviorMap.get(behaviorId)?.displayName ?? current[behaviorId] ?? "",
+        (behaviorMap.get(behaviorId)
+          ? getBehaviorLabel(behaviorMap.get(behaviorId)!)
+          : current[behaviorId]) ?? "",
     }));
   }, [behaviorMap, configs]);
 
@@ -1145,7 +1169,23 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
           return;
         }
 
-        await refresh();
+        setBehaviorDisplayNameOverride(behaviorId, displayName);
+        setRuntimeBehaviorDetails((current) => {
+          const existingBehavior =
+            current[behaviorId] ?? behaviorMap.get(behaviorId) ?? { id: behaviorId, metadata: [] };
+
+          return {
+            ...current,
+            [behaviorId]: {
+              ...existingBehavior,
+              displayName,
+            },
+          };
+        });
+        setNameDrafts((current) => ({
+          ...current,
+          [behaviorId]: displayName,
+        }));
         setMessage("Behavior name updated on the keyboard.");
       } catch (renameError) {
         console.error("Failed to rename behavior", renameError);
@@ -1154,7 +1194,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
         setRenamingId(null);
       }
     },
-    [nameDrafts, refresh]
+    [behaviorMap, nameDrafts]
   );
 
   const deleteBehavior = useCallback(
@@ -1170,6 +1210,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
           return;
         }
 
+        deleteBehaviorDisplayNameOverride(behaviorId);
         await refresh();
         setMessage("Behavior deleted from the keyboard.");
       } catch (deleteError) {
@@ -1191,7 +1232,9 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
 
       const sourceName =
         nameDrafts[behaviorId]?.trim() ||
-        behaviorMap.get(behaviorId)?.displayName ||
+        (behaviorMap.get(behaviorId)
+          ? getBehaviorLabel(behaviorMap.get(behaviorId)!)
+          : undefined) ||
         `Behavior ${behaviorId}`;
       const duplicateName = `${sourceName} Copy`;
       const createConfig =

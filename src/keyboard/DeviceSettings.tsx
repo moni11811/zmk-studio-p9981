@@ -2,6 +2,8 @@ import { useState } from "react";
 import { TrackpadSettings } from "./TrackpadSettings";
 import { BacklightSettings } from "./BacklightSettings";
 import { BluetoothSettings } from "./BluetoothSettings";
+import { SleepSettings } from "./SleepSettings";
+import { PowerSettings } from "./PowerSettings";
 import { BehaviorControl } from "./BehaviorControl";
 import { MacroList } from "./MacroList";
 import { ComboList } from "./ComboList";
@@ -17,6 +19,8 @@ import type { GetBehaviorDetailsResponse } from "@zmkfirmware/zmk-studio-ts-clie
 type SettingsTab =
   | "trackpad"
   | "backlight"
+  | "sleep"
+  | "power"
   | "bluetooth"
   | "behaviors"
   | "macros"
@@ -25,6 +29,8 @@ type SettingsTab =
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "trackpad", label: "Trackpad" },
   { id: "backlight", label: "Backlight" },
+  { id: "sleep", label: "Sleep" },
+  { id: "power", label: "Power" },
   { id: "bluetooth", label: "Bluetooth" },
   { id: "behaviors", label: "Behaviors" },
   { id: "macros", label: "Macros" },
@@ -67,6 +73,8 @@ export const DeviceSettings = ({
       <div className="flex-1 overflow-y-auto">
         {activeTab === "trackpad" && <TrackpadSettings />}
         {activeTab === "backlight" && <BacklightSettings />}
+        {activeTab === "sleep" && <SleepSettings />}
+        {activeTab === "power" && <PowerSettings />}
         {activeTab === "bluetooth" && <BluetoothSettings />}
         {activeTab === "behaviors" && (
           <BehaviorControl behaviors={behaviors} layers={layers} />

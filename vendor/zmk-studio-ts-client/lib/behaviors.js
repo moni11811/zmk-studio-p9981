@@ -111,12 +111,43 @@ export function setBehaviorRuntimeConfigResponseCodeToJSON(object) {
             return "UNRECOGNIZED";
     }
 }
+export var CreateBehaviorResponseCode;
+(function (CreateBehaviorResponseCode) {
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_OK"] = 0] = "CREATE_BEHAVIOR_OK";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_ERR_INVALID_NAME"] = 1] = "CREATE_BEHAVIOR_ERR_INVALID_NAME";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_ERR_INVALID_CONFIG"] = 2] = "CREATE_BEHAVIOR_ERR_INVALID_CONFIG";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_ERR_INVALID_BINDING"] = 3] = "CREATE_BEHAVIOR_ERR_INVALID_BINDING";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_ERR_NO_SLOT"] = 4] = "CREATE_BEHAVIOR_ERR_NO_SLOT";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["CREATE_BEHAVIOR_ERR_PERSIST"] = 5] = "CREATE_BEHAVIOR_ERR_PERSIST";
+    CreateBehaviorResponseCode[CreateBehaviorResponseCode["UNRECOGNIZED"] = -1] = "UNRECOGNIZED";
+})(CreateBehaviorResponseCode || (CreateBehaviorResponseCode = {}));
+export var DeleteBehaviorResponseCode;
+(function (DeleteBehaviorResponseCode) {
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["DELETE_BEHAVIOR_OK"] = 0] = "DELETE_BEHAVIOR_OK";
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["DELETE_BEHAVIOR_ERR_INVALID_ID"] = 1] = "DELETE_BEHAVIOR_ERR_INVALID_ID";
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["DELETE_BEHAVIOR_ERR_NOT_USER_DEFINED"] = 2] = "DELETE_BEHAVIOR_ERR_NOT_USER_DEFINED";
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["DELETE_BEHAVIOR_ERR_IN_USE"] = 3] = "DELETE_BEHAVIOR_ERR_IN_USE";
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["DELETE_BEHAVIOR_ERR_PERSIST"] = 4] = "DELETE_BEHAVIOR_ERR_PERSIST";
+    DeleteBehaviorResponseCode[DeleteBehaviorResponseCode["UNRECOGNIZED"] = -1] = "UNRECOGNIZED";
+})(DeleteBehaviorResponseCode || (DeleteBehaviorResponseCode = {}));
+export var RenameBehaviorResponseCode;
+(function (RenameBehaviorResponseCode) {
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["RENAME_BEHAVIOR_OK"] = 0] = "RENAME_BEHAVIOR_OK";
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["RENAME_BEHAVIOR_ERR_INVALID_ID"] = 1] = "RENAME_BEHAVIOR_ERR_INVALID_ID";
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["RENAME_BEHAVIOR_ERR_NOT_USER_DEFINED"] = 2] = "RENAME_BEHAVIOR_ERR_NOT_USER_DEFINED";
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["RENAME_BEHAVIOR_ERR_INVALID_NAME"] = 3] = "RENAME_BEHAVIOR_ERR_INVALID_NAME";
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["RENAME_BEHAVIOR_ERR_PERSIST"] = 4] = "RENAME_BEHAVIOR_ERR_PERSIST";
+    RenameBehaviorResponseCode[RenameBehaviorResponseCode["UNRECOGNIZED"] = -1] = "UNRECOGNIZED";
+})(RenameBehaviorResponseCode || (RenameBehaviorResponseCode = {}));
 function createBaseRequest() {
     return {
         listAllBehaviors: undefined,
         getBehaviorDetails: undefined,
         getBehaviorRuntimeConfig: undefined,
         setBehaviorRuntimeConfig: undefined,
+        createBehavior: undefined,
+        deleteBehavior: undefined,
+        renameBehavior: undefined,
     };
 }
 export const Request = {
@@ -132,6 +163,15 @@ export const Request = {
         }
         if (message.setBehaviorRuntimeConfig !== undefined) {
             SetBehaviorRuntimeConfigRequest.encode(message.setBehaviorRuntimeConfig, writer.uint32(34).fork()).ldelim();
+        }
+        if (message.createBehavior !== undefined) {
+            CreateBehaviorRequest.encode(message.createBehavior, writer.uint32(42).fork()).ldelim();
+        }
+        if (message.deleteBehavior !== undefined) {
+            DeleteBehaviorRequest.encode(message.deleteBehavior, writer.uint32(50).fork()).ldelim();
+        }
+        if (message.renameBehavior !== undefined) {
+            RenameBehaviorRequest.encode(message.renameBehavior, writer.uint32(58).fork()).ldelim();
         }
         return writer;
     },
@@ -166,6 +206,24 @@ export const Request = {
                     }
                     message.setBehaviorRuntimeConfig = SetBehaviorRuntimeConfigRequest.decode(reader, reader.uint32());
                     continue;
+                case 5:
+                    if (tag !== 42) {
+                        break;
+                    }
+                    message.createBehavior = CreateBehaviorRequest.decode(reader, reader.uint32());
+                    continue;
+                case 6:
+                    if (tag !== 50) {
+                        break;
+                    }
+                    message.deleteBehavior = DeleteBehaviorRequest.decode(reader, reader.uint32());
+                    continue;
+                case 7:
+                    if (tag !== 58) {
+                        break;
+                    }
+                    message.renameBehavior = RenameBehaviorRequest.decode(reader, reader.uint32());
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) {
                 break;
@@ -186,6 +244,15 @@ export const Request = {
             setBehaviorRuntimeConfig: isSet(object.setBehaviorRuntimeConfig)
                 ? SetBehaviorRuntimeConfigRequest.fromJSON(object.setBehaviorRuntimeConfig)
                 : undefined,
+            createBehavior: isSet(object.createBehavior)
+                ? CreateBehaviorRequest.fromJSON(object.createBehavior)
+                : undefined,
+            deleteBehavior: isSet(object.deleteBehavior)
+                ? DeleteBehaviorRequest.fromJSON(object.deleteBehavior)
+                : undefined,
+            renameBehavior: isSet(object.renameBehavior)
+                ? RenameBehaviorRequest.fromJSON(object.renameBehavior)
+                : undefined,
         };
     },
     toJSON(message) {
@@ -201,6 +268,15 @@ export const Request = {
         }
         if (message.setBehaviorRuntimeConfig !== undefined) {
             obj.setBehaviorRuntimeConfig = SetBehaviorRuntimeConfigRequest.toJSON(message.setBehaviorRuntimeConfig);
+        }
+        if (message.createBehavior !== undefined) {
+            obj.createBehavior = CreateBehaviorRequest.toJSON(message.createBehavior);
+        }
+        if (message.deleteBehavior !== undefined) {
+            obj.deleteBehavior = DeleteBehaviorRequest.toJSON(message.deleteBehavior);
+        }
+        if (message.renameBehavior !== undefined) {
+            obj.renameBehavior = RenameBehaviorRequest.toJSON(message.renameBehavior);
         }
         return obj;
     },
@@ -221,6 +297,15 @@ export const Request = {
             (object.setBehaviorRuntimeConfig !== undefined && object.setBehaviorRuntimeConfig !== null)
                 ? SetBehaviorRuntimeConfigRequest.fromPartial(object.setBehaviorRuntimeConfig)
                 : undefined;
+        message.createBehavior = (object.createBehavior !== undefined && object.createBehavior !== null)
+            ? CreateBehaviorRequest.fromPartial(object.createBehavior)
+            : undefined;
+        message.deleteBehavior = (object.deleteBehavior !== undefined && object.deleteBehavior !== null)
+            ? DeleteBehaviorRequest.fromPartial(object.deleteBehavior)
+            : undefined;
+        message.renameBehavior = (object.renameBehavior !== undefined && object.renameBehavior !== null)
+            ? RenameBehaviorRequest.fromPartial(object.renameBehavior)
+            : undefined;
         return message;
     },
 };
@@ -774,12 +859,265 @@ export const SetBehaviorRuntimeConfigRequest = {
         return message;
     },
 };
+function createBaseCreateBehaviorRequest() {
+    return { displayName: "", config: undefined };
+}
+export const CreateBehaviorRequest = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.displayName !== "") {
+            writer.uint32(10).string(message.displayName);
+        }
+        if (message.config !== undefined) {
+            BehaviorRuntimeConfig.encode(message.config, writer.uint32(18).fork()).ldelim();
+        }
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        let end = length === undefined ? reader.len : reader.pos + length;
+        const message = createBaseCreateBehaviorRequest();
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    if (tag !== 10) {
+                        break;
+                    }
+                    message.displayName = reader.string();
+                    continue;
+                case 2:
+                    if (tag !== 18) {
+                        break;
+                    }
+                    message.config = BehaviorRuntimeConfig.decode(reader, reader.uint32());
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) {
+                break;
+            }
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+    fromJSON(object) {
+        return {
+            displayName: isSet(object.displayName) ? globalThis.String(object.displayName) : "",
+            config: isSet(object.config) ? BehaviorRuntimeConfig.fromJSON(object.config) : undefined,
+        };
+    },
+    toJSON(message) {
+        const obj = {};
+        if (message.displayName !== "") {
+            obj.displayName = message.displayName;
+        }
+        if (message.config !== undefined) {
+            obj.config = BehaviorRuntimeConfig.toJSON(message.config);
+        }
+        return obj;
+    },
+    create(base) {
+        return CreateBehaviorRequest.fromPartial(base ?? {});
+    },
+    fromPartial(object) {
+        const message = createBaseCreateBehaviorRequest();
+        message.displayName = object.displayName ?? "";
+        message.config = (object.config !== undefined && object.config !== null)
+            ? BehaviorRuntimeConfig.fromPartial(object.config)
+            : undefined;
+        return message;
+    },
+};
+function createBaseDeleteBehaviorRequest() {
+    return { behaviorId: 0 };
+}
+export const DeleteBehaviorRequest = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.behaviorId !== 0) {
+            writer.uint32(8).uint32(message.behaviorId);
+        }
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        let end = length === undefined ? reader.len : reader.pos + length;
+        const message = createBaseDeleteBehaviorRequest();
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    if (tag !== 8) {
+                        break;
+                    }
+                    message.behaviorId = reader.uint32();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) {
+                break;
+            }
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+    fromJSON(object) {
+        return { behaviorId: isSet(object.behaviorId) ? globalThis.Number(object.behaviorId) : 0 };
+    },
+    toJSON(message) {
+        const obj = {};
+        if (message.behaviorId !== 0) {
+            obj.behaviorId = Math.round(message.behaviorId);
+        }
+        return obj;
+    },
+    create(base) {
+        return DeleteBehaviorRequest.fromPartial(base ?? {});
+    },
+    fromPartial(object) {
+        const message = createBaseDeleteBehaviorRequest();
+        message.behaviorId = object.behaviorId ?? 0;
+        return message;
+    },
+};
+function createBaseRenameBehaviorRequest() {
+    return { behaviorId: 0, displayName: "" };
+}
+export const RenameBehaviorRequest = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.behaviorId !== 0) {
+            writer.uint32(8).uint32(message.behaviorId);
+        }
+        if (message.displayName !== "") {
+            writer.uint32(18).string(message.displayName);
+        }
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        let end = length === undefined ? reader.len : reader.pos + length;
+        const message = createBaseRenameBehaviorRequest();
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    if (tag !== 8) {
+                        break;
+                    }
+                    message.behaviorId = reader.uint32();
+                    continue;
+                case 2:
+                    if (tag !== 18) {
+                        break;
+                    }
+                    message.displayName = reader.string();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) {
+                break;
+            }
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+    fromJSON(object) {
+        return {
+            behaviorId: isSet(object.behaviorId) ? globalThis.Number(object.behaviorId) : 0,
+            displayName: isSet(object.displayName) ? globalThis.String(object.displayName) : "",
+        };
+    },
+    toJSON(message) {
+        const obj = {};
+        if (message.behaviorId !== 0) {
+            obj.behaviorId = Math.round(message.behaviorId);
+        }
+        if (message.displayName !== "") {
+            obj.displayName = message.displayName;
+        }
+        return obj;
+    },
+    create(base) {
+        return RenameBehaviorRequest.fromPartial(base ?? {});
+    },
+    fromPartial(object) {
+        const message = createBaseRenameBehaviorRequest();
+        message.behaviorId = object.behaviorId ?? 0;
+        message.displayName = object.displayName ?? "";
+        return message;
+    },
+};
+function createBaseCreateBehaviorResponse() {
+    return { ok: undefined, err: undefined };
+}
+export const CreateBehaviorResponse = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.ok !== undefined) {
+            writer.uint32(8).uint32(message.ok);
+        }
+        if (message.err !== undefined) {
+            writer.uint32(16).int32(message.err);
+        }
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        let end = length === undefined ? reader.len : reader.pos + length;
+        const message = createBaseCreateBehaviorResponse();
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    if (tag !== 8) {
+                        break;
+                    }
+                    message.ok = reader.uint32();
+                    continue;
+                case 2:
+                    if (tag !== 16) {
+                        break;
+                    }
+                    message.err = reader.int32();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) {
+                break;
+            }
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+    fromJSON(object) {
+        return {
+            ok: isSet(object.ok) ? globalThis.Number(object.ok) : undefined,
+            err: isSet(object.err) ? globalThis.Number(object.err) : undefined,
+        };
+    },
+    toJSON(message) {
+        const obj = {};
+        if (message.ok !== undefined) {
+            obj.ok = Math.round(message.ok);
+        }
+        if (message.err !== undefined) {
+            obj.err = message.err;
+        }
+        return obj;
+    },
+    create(base) {
+        return CreateBehaviorResponse.fromPartial(base ?? {});
+    },
+    fromPartial(object) {
+        const message = createBaseCreateBehaviorResponse();
+        message.ok = object.ok ?? undefined;
+        message.err = object.err ?? undefined;
+        return message;
+    },
+};
 function createBaseResponse() {
     return {
         listAllBehaviors: undefined,
         getBehaviorDetails: undefined,
         getBehaviorRuntimeConfig: undefined,
         setBehaviorRuntimeConfig: undefined,
+        createBehavior: undefined,
+        deleteBehavior: undefined,
+        renameBehavior: undefined,
     };
 }
 export const Response = {
@@ -795,6 +1133,15 @@ export const Response = {
         }
         if (message.setBehaviorRuntimeConfig !== undefined) {
             writer.uint32(32).int32(message.setBehaviorRuntimeConfig);
+        }
+        if (message.createBehavior !== undefined) {
+            CreateBehaviorResponse.encode(message.createBehavior, writer.uint32(42).fork()).ldelim();
+        }
+        if (message.deleteBehavior !== undefined) {
+            writer.uint32(48).int32(message.deleteBehavior);
+        }
+        if (message.renameBehavior !== undefined) {
+            writer.uint32(56).int32(message.renameBehavior);
         }
         return writer;
     },
@@ -829,6 +1176,24 @@ export const Response = {
                     }
                     message.setBehaviorRuntimeConfig = reader.int32();
                     continue;
+                case 5:
+                    if (tag !== 42) {
+                        break;
+                    }
+                    message.createBehavior = CreateBehaviorResponse.decode(reader, reader.uint32());
+                    continue;
+                case 6:
+                    if (tag !== 48) {
+                        break;
+                    }
+                    message.deleteBehavior = reader.int32();
+                    continue;
+                case 7:
+                    if (tag !== 56) {
+                        break;
+                    }
+                    message.renameBehavior = reader.int32();
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) {
                 break;
@@ -851,6 +1216,11 @@ export const Response = {
             setBehaviorRuntimeConfig: isSet(object.setBehaviorRuntimeConfig)
                 ? setBehaviorRuntimeConfigResponseCodeFromJSON(object.setBehaviorRuntimeConfig)
                 : undefined,
+            createBehavior: isSet(object.createBehavior)
+                ? CreateBehaviorResponse.fromJSON(object.createBehavior)
+                : undefined,
+            deleteBehavior: isSet(object.deleteBehavior) ? globalThis.Number(object.deleteBehavior) : undefined,
+            renameBehavior: isSet(object.renameBehavior) ? globalThis.Number(object.renameBehavior) : undefined,
         };
     },
     toJSON(message) {
@@ -866,6 +1236,15 @@ export const Response = {
         }
         if (message.setBehaviorRuntimeConfig !== undefined) {
             obj.setBehaviorRuntimeConfig = setBehaviorRuntimeConfigResponseCodeToJSON(message.setBehaviorRuntimeConfig);
+        }
+        if (message.createBehavior !== undefined) {
+            obj.createBehavior = CreateBehaviorResponse.toJSON(message.createBehavior);
+        }
+        if (message.deleteBehavior !== undefined) {
+            obj.deleteBehavior = message.deleteBehavior;
+        }
+        if (message.renameBehavior !== undefined) {
+            obj.renameBehavior = message.renameBehavior;
         }
         return obj;
     },
@@ -885,6 +1264,11 @@ export const Response = {
                 ? BehaviorRuntimeConfig.fromPartial(object.getBehaviorRuntimeConfig)
                 : undefined;
         message.setBehaviorRuntimeConfig = object.setBehaviorRuntimeConfig ?? undefined;
+        message.createBehavior = (object.createBehavior !== undefined && object.createBehavior !== null)
+            ? CreateBehaviorResponse.fromPartial(object.createBehavior)
+            : undefined;
+        message.deleteBehavior = object.deleteBehavior ?? undefined;
+        message.renameBehavior = object.renameBehavior ?? undefined;
         return message;
     },
 };
@@ -952,7 +1336,7 @@ export const ListAllBehaviorsResponse = {
     },
 };
 function createBaseGetBehaviorDetailsResponse() {
-    return { id: 0, displayName: "", metadata: [] };
+    return { id: 0, displayName: "", metadata: [], isUserDefined: false };
 }
 export const GetBehaviorDetailsResponse = {
     encode(message, writer = _m0.Writer.create()) {
@@ -964,6 +1348,9 @@ export const GetBehaviorDetailsResponse = {
         }
         for (const v of message.metadata) {
             BehaviorBindingParametersSet.encode(v, writer.uint32(26).fork()).ldelim();
+        }
+        if (message.isUserDefined === true) {
+            writer.uint32(32).bool(message.isUserDefined);
         }
         return writer;
     },
@@ -992,6 +1379,12 @@ export const GetBehaviorDetailsResponse = {
                     }
                     message.metadata.push(BehaviorBindingParametersSet.decode(reader, reader.uint32()));
                     continue;
+                case 4:
+                    if (tag !== 32) {
+                        break;
+                    }
+                    message.isUserDefined = reader.bool();
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) {
                 break;
@@ -1007,6 +1400,7 @@ export const GetBehaviorDetailsResponse = {
             metadata: globalThis.Array.isArray(object?.metadata)
                 ? object.metadata.map((e) => BehaviorBindingParametersSet.fromJSON(e))
                 : [],
+            isUserDefined: isSet(object.isUserDefined) ? globalThis.Boolean(object.isUserDefined) : false,
         };
     },
     toJSON(message) {
@@ -1020,6 +1414,9 @@ export const GetBehaviorDetailsResponse = {
         if (message.metadata?.length) {
             obj.metadata = message.metadata.map((e) => BehaviorBindingParametersSet.toJSON(e));
         }
+        if (message.isUserDefined === true) {
+            obj.isUserDefined = message.isUserDefined;
+        }
         return obj;
     },
     create(base) {
@@ -1030,6 +1427,7 @@ export const GetBehaviorDetailsResponse = {
         message.id = object.id ?? 0;
         message.displayName = object.displayName ?? "";
         message.metadata = object.metadata?.map((e) => BehaviorBindingParametersSet.fromPartial(e)) || [];
+        message.isUserDefined = object.isUserDefined ?? false;
         return message;
     },
 };

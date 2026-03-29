@@ -84,7 +84,8 @@ export const BacklightSettings = () => {
         Live-sync note: every control here maps to active firmware behavior.
         Trackpad lighting uses the ZMK backlight path; keyboard lighting uses
         the RGB path. Idle auto-off and timeout now apply to both lighting
-        paths together.
+        paths together. USB/charging trackpad LED behavior now lives in the
+        Power tab so it doesn&apos;t interfere with normal lighting controls.
       </p>
 
       {/* Trackpad Backlight */}

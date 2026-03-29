@@ -6,7 +6,7 @@ use futures::{StreamExt, TryFutureExt};
 use std::time::Duration;
 use uuid::Uuid;
 
-use bluest::{Adapter, ConnectionEvent, Device, DeviceId};
+use bluest::{Adapter, ConnectionEvent, DeviceId};
 
 use tauri::{command, AppHandle, State};
 
@@ -127,20 +127,6 @@ pub async fn gatt_connect(
     }
 }
 
-#[cfg(target_os = "macos")]
-async fn check_connected(adapter: &Adapter, device: &Device) -> bool {
-    if let Ok(()) = adapter.connect_device(&device).await {
-        true
-    } else {
-        false
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-async fn check_connected(_: &Adapter, device: &Device) -> bool {
-    device.is_connected().await
-}
-
 const ADAPTER_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[command]
@@ -171,20 +157,16 @@ pub async fn gatt_list_devices() -> Result<Vec<super::commands::AvailableDevice>
         futures::pin_mut!(devices);
 
         while let Some(device) = devices.next().await {
-            if check_connected(&a, &device).await {
-                let label = device.name_async().await.unwrap_or("Unknown".to_string());
-                let id = match serde_json::to_string(&device.id()) {
-                    Ok(id) => id,
-                    Err(err) => {
-                        println!("Failed to serialize BLE device id: {}", err);
-                        continue;
-                    }
-                };
+            let label = device.name_async().await.unwrap_or("Unknown".to_string());
+            let id = match serde_json::to_string(&device.id()) {
+                Ok(id) => id,
+                Err(err) => {
+                    println!("Failed to serialize BLE device id: {}", err);
+                    continue;
+                }
+            };
 
-                ret.push(super::commands::AvailableDevice { label, id });
-            } else {
-                println!("Device isn't connected: {:?}", device);
-            }
+            ret.push(super::commands::AvailableDevice { label, id });
         }
     }
 

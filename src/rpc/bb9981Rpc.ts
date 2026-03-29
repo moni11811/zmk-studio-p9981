@@ -1,5 +1,6 @@
 import type { RpcConnection } from "@zmkfirmware/zmk-studio-ts-client";
 import { call_rpc } from "./logging";
+import { getBehaviorDisplayNameOverride } from "../behaviors/behaviorDisplayNameOverrides";
 import {
   CreateBehaviorResponseCode,
   DeleteBehaviorResponseCode,
@@ -16,6 +17,8 @@ import type {
   TrackpadConfig,
   BacklightConfig,
   BluetoothConfig,
+  PowerConfig,
+  SleepConfig,
   SetBehaviorRuntimeConfigResponseCode,
   SetMacroStepsResponseCode,
   SetComboResponseCode,
@@ -32,6 +35,8 @@ export type {
   TrackpadConfig,
   BacklightConfig,
   BluetoothConfig,
+  PowerConfig,
+  SleepConfig,
 };
 
 export {
@@ -52,6 +57,8 @@ const listeners: {
   trackpad: ChangeListener<TrackpadConfig>[];
   backlight: ChangeListener<BacklightConfig>[];
   bluetooth: ChangeListener<BluetoothConfig>[];
+  power: ChangeListener<PowerConfig>[];
+  sleep: ChangeListener<SleepConfig>[];
   macros: ChangeListener<MacroDetails[]>[];
   combos: ChangeListener<ComboDetails[]>[];
   behaviors: (() => void)[];
@@ -59,6 +66,8 @@ const listeners: {
   trackpad: [],
   backlight: [],
   bluetooth: [],
+  power: [],
+  sleep: [],
   macros: [],
   combos: [],
   behaviors: [],
@@ -227,9 +236,13 @@ function mapBehaviorDetails(details: any): any {
     return undefined;
   }
 
+  const id = toNumber(details.id);
+  const displayNameOverride = getBehaviorDisplayNameOverride(id);
+
   return {
     ...details,
-    id: toNumber(details.id),
+    id,
+    displayName: displayNameOverride ?? details.displayName ?? "",
   };
 }
 
@@ -244,6 +257,8 @@ function mapTrackpadConfig(config: any): TrackpadConfig {
     precisionModeEnabled: config.precisionModeEnabled ?? true,
     scrollModeSwitch:
       config.scrollModeSwitch === "disabled" ? "disabled" : "capslock",
+    scrollProfile:
+      Number(config.scrollProfile ?? 0) === 1 ? "analog3d" : "classic2d",
   };
 }
 
@@ -272,6 +287,64 @@ function mapBluetoothConfig(config: any): BluetoothConfig {
       paired: profile.paired ?? false,
     })),
     txPowerBoost: config.txPowerBoost ?? true,
+  };
+}
+
+function mapActivityState(value: any): PowerConfig["activityState"] {
+  switch (Number(value ?? 0)) {
+    case 1:
+      return "idle";
+    case 2:
+      return "sleep";
+    default:
+      return "active";
+  }
+}
+
+function mapChargingLedMode(value: any): PowerConfig["chargingLedMode"] {
+  switch (Number(value ?? 0)) {
+    case 1:
+      return "solid";
+    case 2:
+      return "blink";
+    default:
+      return "off";
+  }
+}
+
+function encodeChargingLedMode(mode: PowerConfig["chargingLedMode"]): number {
+  switch (mode) {
+    case "solid":
+      return 1;
+    case "blink":
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+function encodeScrollProfile(profile: TrackpadConfig["scrollProfile"]): number {
+  return profile === "analog3d" ? 1 : 0;
+}
+
+function mapPowerConfig(config: any): PowerConfig {
+  return {
+    batteryPercent: toNumber(config.batteryPercent),
+    usbPowered: config.usbPowered ?? false,
+    extPowerEnabled: config.extPowerEnabled ?? true,
+    batteryReportIntervalS: toNumber(config.batteryReportIntervalS, 60),
+    activityState: mapActivityState(config.activityState),
+    chargingLedMode: mapChargingLedMode(config.chargingLedMode),
+  };
+}
+
+function mapSleepConfig(config: any): SleepConfig {
+  return {
+    idleEnabled: config.idleEnabled ?? true,
+    idleTimeoutMs: toNumber(config.idleTimeoutMs, 30000),
+    sleepEnabled: config.sleepEnabled ?? false,
+    sleepTimeoutMs: toNumber(config.sleepTimeoutMs, 1800000),
+    sleepWhileUsbPowered: config.sleepWhileUsbPowered ?? false,
   };
 }
 
@@ -318,6 +391,16 @@ async function notifyBacklightChanged() {
 async function notifyBluetoothChanged() {
   const config = await settingsRpc.getBluetoothConfig();
   listeners.bluetooth.forEach((cb) => cb(config));
+}
+
+async function notifyPowerChanged() {
+  const config = await settingsRpc.getPowerConfig();
+  listeners.power.forEach((cb) => cb(config));
+}
+
+async function notifySleepChanged() {
+  const config = await settingsRpc.getSleepConfig();
+  listeners.sleep.forEach((cb) => cb(config));
 }
 
 const macrosRpc = {
@@ -520,7 +603,14 @@ const settingsRpc = {
 
   async setTrackpadConfig(config: TrackpadConfig): Promise<SetConfigResponseCode> {
     const resp = (await call_rpc(getConnection(), {
-      settings: { setTrackpadConfig: { config } },
+      settings: {
+        setTrackpadConfig: {
+          config: {
+            ...config,
+            scrollProfile: encodeScrollProfile(config.scrollProfile),
+          },
+        },
+      },
     } as any)) as any;
 
     await notifyTrackpadChanged();
@@ -581,6 +671,71 @@ const settingsRpc = {
     return resp.settings?.setBluetoothConfig ?? 0;
   },
 
+  async getPowerConfig(): Promise<PowerConfig> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { getPowerConfig: true },
+    } as any)) as any;
+
+    return mapPowerConfig(resp.settings?.getPowerConfig);
+  },
+
+  async setPowerConfig(config: PowerConfig): Promise<SetConfigResponseCode> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: {
+        setPowerConfig: {
+          config: {
+            ...config,
+            chargingLedMode: encodeChargingLedMode(config.chargingLedMode),
+          },
+        },
+      },
+    } as any)) as any;
+
+    await notifyPowerChanged();
+    return resp.settings?.setPowerConfig ?? 0;
+  },
+
+  onPowerChange(cb: ChangeListener<PowerConfig>): () => void {
+    listeners.power.push(cb);
+    return () => {
+      const idx = listeners.power.indexOf(cb);
+      if (idx >= 0) listeners.power.splice(idx, 1);
+    };
+  },
+
+  async getSleepConfig(): Promise<SleepConfig> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { getSleepConfig: true },
+    } as any)) as any;
+
+    return mapSleepConfig(resp.settings?.getSleepConfig);
+  },
+
+  async setSleepConfig(config: SleepConfig): Promise<SetConfigResponseCode> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { setSleepConfig: { config } },
+    } as any)) as any;
+
+    await notifySleepChanged();
+    await notifyPowerChanged();
+    return resp.settings?.setSleepConfig ?? 0;
+  },
+
+  onSleepChange(cb: ChangeListener<SleepConfig>): () => void {
+    listeners.sleep.push(cb);
+    return () => {
+      const idx = listeners.sleep.indexOf(cb);
+      if (idx >= 0) listeners.sleep.splice(idx, 1);
+    };
+  },
+
+  async powerOff(): Promise<boolean> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { powerOff: true },
+    } as any)) as any;
+    return !!resp.settings?.powerOff;
+  },
+
   async selectBtProfile(profileIndex: number): Promise<boolean> {
     const resp = (await call_rpc(getConnection(), {
       settings: { selectBtProfile: { profileIndex } },
@@ -623,6 +778,8 @@ const settingsRpc = {
     await notifyTrackpadChanged();
     await notifyBacklightChanged();
     await notifyBluetoothChanged();
+    await notifyPowerChanged();
+    await notifySleepChanged();
     return !!resp.settings?.discardChanges;
   },
 

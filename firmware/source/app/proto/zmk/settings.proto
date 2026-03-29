@@ -1,0 +1,162 @@
+// Copyright (c) 2024 The ZMK Contributors
+// SPDX-License-Identifier: MIT
+
+syntax = "proto3";
+
+package zmk.settings;
+
+// Trackpad settings (Avago A320 optical sensor)
+message TrackpadConfig {
+  bool enabled = 1;
+  uint32 sensitivity = 2;        // 1-10 scale
+  string scroll_direction = 3;   // "normal" or "inverted"
+  uint32 scroll_speed = 4;       // 1-10 scale
+  uint32 polling_interval_ms = 5;
+  bool precision_mode_enabled = 6;
+  string scroll_mode_switch = 7; // "capslock" or "disabled"
+  uint32 scroll_profile = 8;     // 0 = classic 2D, 1 = analog 3D
+}
+
+// Backlight settings
+message BacklightConfig {
+  bool backlight_enabled = 1;
+  uint32 backlight_brightness = 2;    // 0-100%
+  bool backlight_auto_off = 3;
+  uint32 idle_timeout_ms = 4;
+  bool rgb_enabled = 5;
+  uint32 rgb_brightness = 6;          // 0-100%
+  string rgb_color = 7;               // hex color
+  bool trackpad_led_enabled = 8;
+  uint32 trackpad_led_brightness = 9; // 10-100%
+}
+
+// Bluetooth settings
+message BtProfile {
+  uint32 index = 1;
+  string name = 2;
+  bool connected = 3;
+  bool paired = 4;
+}
+
+message BluetoothConfig {
+  string output_mode = 1;         // "ble" or "usb"
+  uint32 active_profile = 2;
+  repeated BtProfile profiles = 3;
+  bool tx_power_boost = 4;
+}
+
+message PowerConfig {
+  uint32 battery_percent = 1;
+  bool usb_powered = 2;
+  bool ext_power_enabled = 3;
+  uint32 battery_report_interval_s = 4;
+  uint32 activity_state = 5;      // 0 = active, 1 = idle, 2 = sleep
+  uint32 charging_led_mode = 6;   // 0 = off, 1 = solid, 2 = blink
+}
+
+message SleepConfig {
+  bool idle_enabled = 1;
+  uint32 idle_timeout_ms = 2;
+  bool sleep_enabled = 3;
+  uint32 sleep_timeout_ms = 4;
+  bool sleep_while_usb_powered = 5;
+}
+
+// Request messages
+message SetTrackpadConfigRequest {
+  TrackpadConfig config = 1;
+}
+
+message SetBacklightConfigRequest {
+  BacklightConfig config = 1;
+}
+
+message SetBluetoothConfigRequest {
+  BluetoothConfig config = 1;
+}
+
+message SetPowerConfigRequest {
+  PowerConfig config = 1;
+}
+
+message SetSleepConfigRequest {
+  SleepConfig config = 1;
+}
+
+message SelectBtProfileRequest {
+  uint32 profile_index = 1;
+}
+
+message ClearBtProfileRequest {
+  uint32 profile_index = 1;
+}
+
+message RenameBtProfileRequest {
+  uint32 profile_index = 1;
+  string name = 2;
+}
+
+message Request {
+  oneof request_type {
+    bool get_trackpad_config = 1;
+    SetTrackpadConfigRequest set_trackpad_config = 2;
+    bool get_backlight_config = 3;
+    SetBacklightConfigRequest set_backlight_config = 4;
+    bool get_bluetooth_config = 5;
+    SetBluetoothConfigRequest set_bluetooth_config = 6;
+    SelectBtProfileRequest select_bt_profile = 7;
+    ClearBtProfileRequest clear_bt_profile = 8;
+    RenameBtProfileRequest rename_bt_profile = 9;
+    bool save_changes = 10;
+    bool discard_changes = 11;
+    bool get_power_config = 12;
+    SetPowerConfigRequest set_power_config = 13;
+    bool get_sleep_config = 14;
+    SetSleepConfigRequest set_sleep_config = 15;
+    bool power_off = 16;
+  }
+}
+
+// Response codes
+enum SetConfigResponseCode {
+  SET_CONFIG_OK = 0;
+  SET_CONFIG_ERR_INVALID = 1;
+  SET_CONFIG_ERR_OUT_OF_RANGE = 2;
+}
+
+enum SaveChangesErrorCode {
+  SAVE_CHANGES_OK = 0;
+  SAVE_CHANGES_ERR_GENERIC = 1;
+}
+
+message Response {
+  oneof response_type {
+    TrackpadConfig get_trackpad_config = 1;
+    SetConfigResponseCode set_trackpad_config = 2;
+    BacklightConfig get_backlight_config = 3;
+    SetConfigResponseCode set_backlight_config = 4;
+    BluetoothConfig get_bluetooth_config = 5;
+    SetConfigResponseCode set_bluetooth_config = 6;
+    bool select_bt_profile = 7;
+    bool clear_bt_profile = 8;
+    bool rename_bt_profile = 9;
+    SaveChangesErrorCode save_changes = 10;
+    bool discard_changes = 11;
+    PowerConfig get_power_config = 12;
+    SetConfigResponseCode set_power_config = 13;
+    SleepConfig get_sleep_config = 14;
+    SetConfigResponseCode set_sleep_config = 15;
+    bool power_off = 16;
+  }
+}
+
+// Notifications
+message Notification {
+  oneof notification_type {
+    TrackpadConfig trackpad_config_changed = 1;
+    BacklightConfig backlight_config_changed = 2;
+    BluetoothConfig bluetooth_config_changed = 3;
+    PowerConfig power_config_changed = 4;
+    SleepConfig sleep_config_changed = 5;
+  }
+}

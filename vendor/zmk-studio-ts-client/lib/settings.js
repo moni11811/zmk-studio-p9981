@@ -8,6 +8,8 @@ function createBaseTrackpadConfig() {
         scrollSpeed: 0,
         pollingIntervalMs: 0,
         precisionModeEnabled: false,
+        scrollModeSwitch: "",
+        scrollProfile: 0,
     };
 }
 const TrackpadConfig = {
@@ -18,6 +20,8 @@ const TrackpadConfig = {
         if (message.scrollSpeed !== 0) writer.uint32(32).uint32(message.scrollSpeed);
         if (message.pollingIntervalMs !== 0) writer.uint32(40).uint32(message.pollingIntervalMs);
         if (message.precisionModeEnabled === true) writer.uint32(48).bool(message.precisionModeEnabled);
+        if (message.scrollModeSwitch !== "") writer.uint32(58).string(message.scrollModeSwitch);
+        if (message.scrollProfile !== 0) writer.uint32(64).uint32(message.scrollProfile);
         return writer;
     },
     decode(input, length) {
@@ -44,6 +48,12 @@ const TrackpadConfig = {
                     continue;
                 case 6:
                     message.precisionModeEnabled = reader.bool();
+                    continue;
+                case 7:
+                    message.scrollModeSwitch = reader.string();
+                    continue;
+                case 8:
+                    message.scrollProfile = reader.uint32();
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
@@ -199,6 +209,107 @@ const BluetoothConfig = {
     },
 };
 
+function createBasePowerConfig() {
+    return {
+        batteryPercent: 0,
+        usbPowered: false,
+        extPowerEnabled: false,
+        batteryReportIntervalS: 0,
+        activityState: 0,
+        chargingLedMode: 0,
+    };
+}
+const PowerConfig = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.batteryPercent !== 0) writer.uint32(8).uint32(message.batteryPercent);
+        if (message.usbPowered === true) writer.uint32(16).bool(message.usbPowered);
+        if (message.extPowerEnabled === true) writer.uint32(24).bool(message.extPowerEnabled);
+        if (message.batteryReportIntervalS !== 0) writer.uint32(32).uint32(message.batteryReportIntervalS);
+        if (message.activityState !== 0) writer.uint32(40).uint32(message.activityState);
+        if (message.chargingLedMode !== 0) writer.uint32(48).uint32(message.chargingLedMode);
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        const message = createBasePowerConfig();
+        let end = length === undefined ? reader.len : reader.pos + length;
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    message.batteryPercent = reader.uint32();
+                    continue;
+                case 2:
+                    message.usbPowered = reader.bool();
+                    continue;
+                case 3:
+                    message.extPowerEnabled = reader.bool();
+                    continue;
+                case 4:
+                    message.batteryReportIntervalS = reader.uint32();
+                    continue;
+                case 5:
+                    message.activityState = reader.uint32();
+                    continue;
+                case 6:
+                    message.chargingLedMode = reader.uint32();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) break;
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+};
+
+function createBaseSleepConfig() {
+    return {
+        idleEnabled: false,
+        idleTimeoutMs: 0,
+        sleepEnabled: false,
+        sleepTimeoutMs: 0,
+        sleepWhileUsbPowered: false,
+    };
+}
+const SleepConfig = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.idleEnabled === true) writer.uint32(8).bool(message.idleEnabled);
+        if (message.idleTimeoutMs !== 0) writer.uint32(16).uint32(message.idleTimeoutMs);
+        if (message.sleepEnabled === true) writer.uint32(24).bool(message.sleepEnabled);
+        if (message.sleepTimeoutMs !== 0) writer.uint32(32).uint32(message.sleepTimeoutMs);
+        if (message.sleepWhileUsbPowered === true) writer.uint32(40).bool(message.sleepWhileUsbPowered);
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        const message = createBaseSleepConfig();
+        let end = length === undefined ? reader.len : reader.pos + length;
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    message.idleEnabled = reader.bool();
+                    continue;
+                case 2:
+                    message.idleTimeoutMs = reader.uint32();
+                    continue;
+                case 3:
+                    message.sleepEnabled = reader.bool();
+                    continue;
+                case 4:
+                    message.sleepTimeoutMs = reader.uint32();
+                    continue;
+                case 5:
+                    message.sleepWhileUsbPowered = reader.bool();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) break;
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+};
+
 const ConfigWrapper = {
     encode(message, writer = _m0.Writer.create(), encoder) {
         if (message.config !== undefined) encoder(message.config, writer.uint32(10).fork()).ldelim();
@@ -278,9 +389,14 @@ function createBaseRequest() {
         setBacklightConfig: undefined,
         getBluetoothConfig: false,
         setBluetoothConfig: undefined,
+        getPowerConfig: false,
+        setPowerConfig: undefined,
+        getSleepConfig: false,
+        setSleepConfig: undefined,
         selectBtProfile: undefined,
         clearBtProfile: undefined,
         renameBtProfile: undefined,
+        powerOff: false,
         saveChanges: false,
         discardChanges: false,
     };
@@ -299,6 +415,14 @@ export const Request = {
         if (message.setBluetoothConfig !== undefined) {
             ConfigWrapper.encode(message.setBluetoothConfig, writer.uint32(50).fork(), BluetoothConfig.encode).ldelim();
         }
+        if (message.getPowerConfig === true) writer.uint32(96).bool(message.getPowerConfig);
+        if (message.setPowerConfig !== undefined) {
+            ConfigWrapper.encode(message.setPowerConfig, writer.uint32(106).fork(), PowerConfig.encode).ldelim();
+        }
+        if (message.getSleepConfig === true) writer.uint32(112).bool(message.getSleepConfig);
+        if (message.setSleepConfig !== undefined) {
+            ConfigWrapper.encode(message.setSleepConfig, writer.uint32(122).fork(), SleepConfig.encode).ldelim();
+        }
         if (message.selectBtProfile !== undefined) {
             ProfileIndexRequest.encode(message.selectBtProfile, writer.uint32(58).fork()).ldelim();
         }
@@ -308,6 +432,7 @@ export const Request = {
         if (message.renameBtProfile !== undefined) {
             RenameBtProfileRequest.encode(message.renameBtProfile, writer.uint32(74).fork()).ldelim();
         }
+        if (message.powerOff === true) writer.uint32(128).bool(message.powerOff);
         if (message.saveChanges === true) writer.uint32(80).bool(message.saveChanges);
         if (message.discardChanges === true) writer.uint32(88).bool(message.discardChanges);
         return writer;
@@ -337,6 +462,18 @@ export const Request = {
                 case 6:
                     message.setBluetoothConfig = ConfigWrapper.decode(reader, reader.uint32(), BluetoothConfig.decode);
                     continue;
+                case 12:
+                    message.getPowerConfig = reader.bool();
+                    continue;
+                case 13:
+                    message.setPowerConfig = ConfigWrapper.decode(reader, reader.uint32(), PowerConfig.decode);
+                    continue;
+                case 14:
+                    message.getSleepConfig = reader.bool();
+                    continue;
+                case 15:
+                    message.setSleepConfig = ConfigWrapper.decode(reader, reader.uint32(), SleepConfig.decode);
+                    continue;
                 case 7:
                     message.selectBtProfile = ProfileIndexRequest.decode(reader, reader.uint32());
                     continue;
@@ -345,6 +482,9 @@ export const Request = {
                     continue;
                 case 9:
                     message.renameBtProfile = RenameBtProfileRequest.decode(reader, reader.uint32());
+                    continue;
+                case 16:
+                    message.powerOff = reader.bool();
                     continue;
                 case 10:
                     message.saveChanges = reader.bool();
@@ -368,9 +508,14 @@ function createBaseResponse() {
         setBacklightConfig: 0,
         getBluetoothConfig: undefined,
         setBluetoothConfig: 0,
+        getPowerConfig: undefined,
+        setPowerConfig: 0,
+        getSleepConfig: undefined,
+        setSleepConfig: 0,
         selectBtProfile: false,
         clearBtProfile: false,
         renameBtProfile: false,
+        powerOff: false,
         saveChanges: 0,
         discardChanges: false,
     };
@@ -389,9 +534,18 @@ export const Response = {
             BluetoothConfig.encode(message.getBluetoothConfig, writer.uint32(42).fork()).ldelim();
         }
         if (message.setBluetoothConfig !== 0) writer.uint32(48).int32(message.setBluetoothConfig);
+        if (message.getPowerConfig !== undefined) {
+            PowerConfig.encode(message.getPowerConfig, writer.uint32(98).fork()).ldelim();
+        }
+        if (message.setPowerConfig !== 0) writer.uint32(104).int32(message.setPowerConfig);
+        if (message.getSleepConfig !== undefined) {
+            SleepConfig.encode(message.getSleepConfig, writer.uint32(114).fork()).ldelim();
+        }
+        if (message.setSleepConfig !== 0) writer.uint32(120).int32(message.setSleepConfig);
         if (message.selectBtProfile === true) writer.uint32(56).bool(message.selectBtProfile);
         if (message.clearBtProfile === true) writer.uint32(64).bool(message.clearBtProfile);
         if (message.renameBtProfile === true) writer.uint32(72).bool(message.renameBtProfile);
+        if (message.powerOff === true) writer.uint32(128).bool(message.powerOff);
         if (message.saveChanges !== 0) writer.uint32(80).int32(message.saveChanges);
         if (message.discardChanges === true) writer.uint32(88).bool(message.discardChanges);
         return writer;
@@ -421,6 +575,18 @@ export const Response = {
                 case 6:
                     message.setBluetoothConfig = reader.int32();
                     continue;
+                case 12:
+                    message.getPowerConfig = PowerConfig.decode(reader, reader.uint32());
+                    continue;
+                case 13:
+                    message.setPowerConfig = reader.int32();
+                    continue;
+                case 14:
+                    message.getSleepConfig = SleepConfig.decode(reader, reader.uint32());
+                    continue;
+                case 15:
+                    message.setSleepConfig = reader.int32();
+                    continue;
                 case 7:
                     message.selectBtProfile = reader.bool();
                     continue;
@@ -429,6 +595,9 @@ export const Response = {
                     continue;
                 case 9:
                     message.renameBtProfile = reader.bool();
+                    continue;
+                case 16:
+                    message.powerOff = reader.bool();
                     continue;
                 case 10:
                     message.saveChanges = reader.int32();
@@ -449,6 +618,8 @@ function createBaseNotification() {
         trackpadConfigChanged: undefined,
         backlightConfigChanged: undefined,
         bluetoothConfigChanged: undefined,
+        powerConfigChanged: undefined,
+        sleepConfigChanged: undefined,
     };
 }
 export const Notification = {
@@ -461,6 +632,12 @@ export const Notification = {
         }
         if (message.bluetoothConfigChanged !== undefined) {
             BluetoothConfig.encode(message.bluetoothConfigChanged, writer.uint32(26).fork()).ldelim();
+        }
+        if (message.powerConfigChanged !== undefined) {
+            PowerConfig.encode(message.powerConfigChanged, writer.uint32(34).fork()).ldelim();
+        }
+        if (message.sleepConfigChanged !== undefined) {
+            SleepConfig.encode(message.sleepConfigChanged, writer.uint32(42).fork()).ldelim();
         }
         return writer;
     },
@@ -479,6 +656,12 @@ export const Notification = {
                     continue;
                 case 3:
                     message.bluetoothConfigChanged = BluetoothConfig.decode(reader, reader.uint32());
+                    continue;
+                case 4:
+                    message.powerConfigChanged = PowerConfig.decode(reader, reader.uint32());
+                    continue;
+                case 5:
+                    message.sleepConfigChanged = SleepConfig.decode(reader, reader.uint32());
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;

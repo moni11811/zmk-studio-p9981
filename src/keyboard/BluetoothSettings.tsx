@@ -85,8 +85,8 @@ export const BluetoothSettings = () => {
         </div>
         <p className="text-xs text-gray-500">
           Toggle on device: Layer 2 + double-tap $.
-          {config.outputMode === "usb" &&
-            " Trackpad LED blinks every second in USB mode."}
+          {" "}USB / charging trackpad LED behavior is now configured in the
+          Power tab.
         </p>
       </div>
 

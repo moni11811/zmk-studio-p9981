@@ -36,7 +36,12 @@ function deviceList(
   const [selectedDev, setSelectedDev] = useState(new Set<Key>());
   const [refreshing, setRefreshing] = useState(false);
 
-  async function LoadEm() {
+  const loadDevices = useCallback(async () => {
+    if (!open) {
+      setRefreshing(false);
+      return;
+    }
+
     setRefreshing(true);
     let entries: Array<[TransportFactory, AvailableDevice]> = [];
     for (const t of transports.filter((t) => t.pick_and_connect)) {
@@ -54,21 +59,30 @@ function deviceList(
 
     setDevices(entries);
     setRefreshing(false);
-  }
+  }, [open, transports]);
 
   useEffect(() => {
     setSelectedDev(new Set());
     setDevices([]);
 
-    LoadEm();
-  }, [transports, open, setDevices]);
+    if (!open) {
+      setRefreshing(false);
+      return;
+    }
+
+    void loadDevices();
+  }, [loadDevices, open]);
 
   const onRefresh = useCallback(() => {
+    if (!open) {
+      return;
+    }
+
     setSelectedDev(new Set());
     setDevices([]);
 
-    LoadEm();
-  }, [setDevices]);
+    void loadDevices();
+  }, [loadDevices, open]);
 
   const onSelect = useCallback(
     async (keys: Selection) => {

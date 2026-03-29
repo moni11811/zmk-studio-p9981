@@ -9,6 +9,7 @@ import { bb9981Rpc } from "../rpc/bb9981Rpc";
  * Based on the Avago A320 optical sensor (I2C @ 0x57):
  * - Sensitivity controlled via DPI levels (mapped to trackpad LED brightness)
  * - Scroll mode activated when CapsLock is ON
+ * - Scroll profile can stay classic 2D or switch to analog/controller-like 3D
  * - Scroll direction can be inverted
  * - Precision mode when Ctrl is held (halves sensitivity)
  * - Polling interval configurable (default 10ms)
@@ -171,6 +172,28 @@ export const TrackpadSettings = () => {
             </select>
             <p className="text-xs text-gray-500">
               Applies when scroll mode is active.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Scroll Profile</label>
+            <select
+              value={config.scrollProfile}
+              onChange={(e) =>
+                updateField(
+                  "scrollProfile",
+                  e.target.value as "classic2d" | "analog3d"
+                )
+              }
+              className="h-8 rounded border border-gray-300"
+              disabled={!config.enabled}
+            >
+              <option value="classic2d">Classic 2D (stable)</option>
+              <option value="analog3d">Analog 3D / controller-like</option>
+            </select>
+            <p className="text-xs text-gray-500">
+              Classic keeps the current stable scroll path. Analog keeps both
+              axes live for a smoother controller-like feel.
             </p>
           </div>
 

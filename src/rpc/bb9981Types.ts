@@ -232,6 +232,7 @@ export interface TrackpadConfig {
   pollingIntervalMs: number;
   precisionModeEnabled: boolean;
   scrollModeSwitch: "capslock" | "disabled";
+  scrollProfile: "classic2d" | "analog3d";
 }
 
 export interface BacklightConfig {
@@ -260,6 +261,23 @@ export interface BluetoothConfig {
   txPowerBoost: boolean;
 }
 
+export interface PowerConfig {
+  batteryPercent: number;
+  usbPowered: boolean;
+  extPowerEnabled: boolean;
+  batteryReportIntervalS: number;
+  activityState: "active" | "idle" | "sleep";
+  chargingLedMode: "off" | "solid" | "blink";
+}
+
+export interface SleepConfig {
+  idleEnabled: boolean;
+  idleTimeoutMs: number;
+  sleepEnabled: boolean;
+  sleepTimeoutMs: number;
+  sleepWhileUsbPowered: boolean;
+}
+
 export interface SettingsRequest {
   getTrackpadConfig?: boolean;
   setTrackpadConfig?: { config: TrackpadConfig };
@@ -267,9 +285,14 @@ export interface SettingsRequest {
   setBacklightConfig?: { config: BacklightConfig };
   getBluetoothConfig?: boolean;
   setBluetoothConfig?: { config: BluetoothConfig };
+  getPowerConfig?: boolean;
+  setPowerConfig?: { config: PowerConfig };
+  getSleepConfig?: boolean;
+  setSleepConfig?: { config: SleepConfig };
   selectBtProfile?: { profileIndex: number };
   clearBtProfile?: { profileIndex: number };
   renameBtProfile?: { profileIndex: number; name: string };
+  powerOff?: boolean;
   saveChanges?: boolean;
   discardChanges?: boolean;
 }
@@ -287,9 +310,14 @@ export interface SettingsResponse {
   setBacklightConfig?: SetConfigResponseCode;
   getBluetoothConfig?: BluetoothConfig;
   setBluetoothConfig?: SetConfigResponseCode;
+  getPowerConfig?: PowerConfig;
+  setPowerConfig?: SetConfigResponseCode;
+  getSleepConfig?: SleepConfig;
+  setSleepConfig?: SetConfigResponseCode;
   selectBtProfile?: boolean;
   clearBtProfile?: boolean;
   renameBtProfile?: boolean;
+  powerOff?: boolean;
   saveChanges?: number;
   discardChanges?: boolean;
 }

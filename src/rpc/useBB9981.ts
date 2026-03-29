@@ -16,6 +16,8 @@ import type {
   TrackpadConfig,
   BacklightConfig,
   BluetoothConfig,
+  PowerConfig,
+  SleepConfig,
 } from "./bb9981Types";
 import { ConnectionContext } from "./ConnectionContext";
 import { useSub } from "../usePubSub";
@@ -479,4 +481,144 @@ export function useBluetoothConfig() {
   }, []);
 
   return { config, loading, updateConfig, selectProfile, clearProfile, renameProfile };
+}
+
+export function usePowerConfig() {
+  const connection = useContext(ConnectionContext);
+  const [config, setConfig] = useState<PowerConfig | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+
+  useSub("rpc_notification.settings.powerConfigChanged", () => {
+    if (!connection.conn) {
+      return;
+    }
+
+    void bb9981Rpc.settings
+      .getPowerConfig()
+      .then((cfg) => setConfig(cfg))
+      .catch((error) => {
+        console.error("Failed to refresh power config from notification", error);
+      });
+  });
+
+  useEffect(() => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setLoading(false);
+      return;
+    }
+    let ignore = false;
+
+    async function loadPowerConfig() {
+      setLoading(true);
+      try {
+        const cfg = await bb9981Rpc.settings.getPowerConfig();
+        if (!ignore) {
+          setConfig(cfg);
+        }
+      } catch (error) {
+        console.error("Failed to load power config", error);
+        if (!ignore) {
+          setConfig(undefined);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadPowerConfig();
+
+    const unsub = bb9981Rpc.settings.onPowerChange((cfg) => {
+      setConfig(cfg);
+    });
+
+    return () => {
+      ignore = true;
+      unsub();
+    };
+  }, [connection]);
+
+  const updateConfig = useCallback(async (newConfig: PowerConfig) => {
+    const result = await bb9981Rpc.settings.setPowerConfig(newConfig);
+    if (result === 0) {
+      setConfig(newConfig);
+    }
+    return result;
+  }, []);
+
+  const powerOff = useCallback(async () => {
+    return bb9981Rpc.settings.powerOff();
+  }, []);
+
+  return { config, loading, updateConfig, powerOff };
+}
+
+export function useSleepConfig() {
+  const connection = useContext(ConnectionContext);
+  const [config, setConfig] = useState<SleepConfig | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+
+  useSub("rpc_notification.settings.sleepConfigChanged", () => {
+    if (!connection.conn) {
+      return;
+    }
+
+    void bb9981Rpc.settings
+      .getSleepConfig()
+      .then((cfg) => setConfig(cfg))
+      .catch((error) => {
+        console.error("Failed to refresh sleep config from notification", error);
+      });
+  });
+
+  useEffect(() => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setLoading(false);
+      return;
+    }
+    let ignore = false;
+
+    async function loadSleepConfig() {
+      setLoading(true);
+      try {
+        const cfg = await bb9981Rpc.settings.getSleepConfig();
+        if (!ignore) {
+          setConfig(cfg);
+        }
+      } catch (error) {
+        console.error("Failed to load sleep config", error);
+        if (!ignore) {
+          setConfig(undefined);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadSleepConfig();
+
+    const unsub = bb9981Rpc.settings.onSleepChange((cfg) => {
+      setConfig(cfg);
+    });
+
+    return () => {
+      ignore = true;
+      unsub();
+    };
+  }, [connection]);
+
+  const updateConfig = useCallback(async (newConfig: SleepConfig) => {
+    const result = await bb9981Rpc.settings.setSleepConfig(newConfig);
+    if (result === 0) {
+      setConfig(newConfig);
+    }
+    return result;
+  }, []);
+
+  return { config, loading, updateConfig };
 }

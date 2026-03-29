@@ -26,7 +26,6 @@ import { useConnectedDeviceData } from "../rpc/useConnectedDeviceData";
 import { ConnectionContext } from "../rpc/ConnectionContext";
 import { DoCallback, UndoRedoContext } from "../undoRedo";
 import { BehaviorBindingPicker } from "../behaviors/BehaviorBindingPicker";
-import { getBehaviorLabel } from "../behaviors/behaviorNames";
 import { produce } from "immer";
 import { LockStateContext } from "../rpc/LockStateContext";
 import { LockState } from "@zmkfirmware/zmk-studio-ts-client/core";
@@ -112,7 +111,6 @@ function useBehaviors(keymap?: Keymap | null): BehaviorMap {
 
         let behavior_list = await call_rpc(connection.conn, get_behaviors);
         if (!ignore) {
-          let behavior_map: BehaviorMap = {};
           const behaviorIds = new Set<number>();
 
           for (let behaviorId of behavior_list.behaviors?.listAllBehaviors
@@ -126,32 +124,28 @@ function useBehaviors(keymap?: Keymap | null): BehaviorMap {
             }
           }
 
-          for (let behaviorId of behaviorIds) {
-            if (ignore) {
-              break;
-            }
-            let details_req = {
-              behaviors: { getBehaviorDetails: { behaviorId } },
-              requestId: 0,
-            };
-            let behavior_details = await call_rpc(connection.conn, details_req);
-            let dets: StudioBehaviorDetails | undefined =
-              behavior_details?.behaviors?.getBehaviorDetails;
+          const detailResponses = await Promise.all(
+            [...behaviorIds].map(async (behaviorId) => ({
+              behaviorId,
+              details: await bb9981Rpc.behaviors.getBehaviorDetails(behaviorId),
+            }))
+          );
 
-            if (dets) {
+          if (!ignore) {
+            const behavior_map: BehaviorMap = {};
+
+            for (const { details } of detailResponses) {
+              if (!details) {
+                continue;
+              }
+
               const normalizedDetails: StudioBehaviorDetails = {
-                ...dets,
-                id: normalizeBehaviorId(dets.id),
-                displayName: getBehaviorLabel({
-                  ...dets,
-                  id: normalizeBehaviorId(dets.id),
-                }),
+                ...details,
+                id: normalizeBehaviorId(details.id),
               };
               behavior_map[normalizedDetails.id] = normalizedDetails;
             }
-          }
 
-          if (!ignore) {
             setBehaviors(behavior_map);
           }
         }
