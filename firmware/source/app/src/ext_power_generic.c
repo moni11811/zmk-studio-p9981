@@ -150,7 +150,12 @@ static int ext_power_generic_init(const struct device *dev) {
 
     for (int i = 0; i < config->control_gpios_count; i++) {
         const struct gpio_dt_spec *gpio = &config->control[i];
-        if (gpio_pin_configure_dt(gpio, GPIO_OUTPUT_INACTIVE)) {
+        /*
+         * Bring the rail up in its logical "on" state immediately so active-low
+         * power-enable pins do not briefly drop the board's battery rail during
+         * startup before ext_power_enable() runs.
+         */
+        if (gpio_pin_configure_dt(gpio, GPIO_OUTPUT_ACTIVE)) {
             LOG_ERR("Failed to configure ext-power control pin %d", i);
             return -EIO;
         }

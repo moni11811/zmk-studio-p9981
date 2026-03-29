@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 struct zmk_led_hsb {
     uint16_t h;
     uint8_t s;
@@ -28,3 +30,5 @@ int zmk_rgb_underglow_change_brt(int direction);
 int zmk_rgb_underglow_change_spd(int direction);
 int zmk_rgb_underglow_set_hsb(struct zmk_led_hsb color);
 struct zmk_led_hsb zmk_rgb_underglow_get_hsb(void);
+void zmk_rgb_underglow_set_idle_timeout_ms(uint32_t timeout_ms);
+uint32_t zmk_rgb_underglow_get_idle_timeout_ms(void);

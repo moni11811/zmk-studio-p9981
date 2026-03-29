@@ -254,8 +254,17 @@ export function useTrackpadConfig() {
   const [config, setConfig] = useState<TrackpadConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
-  useSub("rpc_notification.settings.trackpadConfigChanged", (cfg) => {
-    setConfig(cfg as TrackpadConfig);
+  useSub("rpc_notification.settings.trackpadConfigChanged", () => {
+    if (!connection.conn) {
+      return;
+    }
+
+    void bb9981Rpc.settings
+      .getTrackpadConfig()
+      .then((cfg) => setConfig(cfg))
+      .catch((error) => {
+        console.error("Failed to refresh trackpad config from notification", error);
+      });
   });
 
   useEffect(() => {

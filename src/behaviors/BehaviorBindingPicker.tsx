@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   GetBehaviorDetailsResponse,
@@ -6,6 +6,7 @@ import {
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 import { BehaviorBinding } from "@zmkfirmware/zmk-studio-ts-client/keymap";
 import { BehaviorParametersPicker } from "./BehaviorParametersPicker";
+import { getBehaviorLabel } from "./behaviorNames";
 import { validateValue } from "./parameters";
 
 export interface BehaviorBindingPickerProps {
@@ -13,6 +14,38 @@ export interface BehaviorBindingPickerProps {
   behaviors: GetBehaviorDetailsResponse[];
   layers: { id: number; name: string }[];
   onBindingChanged: (binding: BehaviorBinding) => void;
+}
+
+function normalizeNumericValue(value: any, fallback = 0): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (value && typeof value === "object") {
+    if (typeof value.toNumber === "function") {
+      try {
+        const parsed = value.toNumber();
+        return Number.isFinite(parsed) ? parsed : fallback;
+      } catch (_error) {
+        return fallback;
+      }
+    }
+
+    if (typeof value.low === "number") {
+      return value.low;
+    }
+  }
+
+  return fallback;
 }
 
 function validateBinding(
@@ -45,25 +78,66 @@ export const BehaviorBindingPicker = ({
   behaviors,
   onBindingChanged,
 }: BehaviorBindingPickerProps) => {
-  const [behaviorId, setBehaviorId] = useState(binding.behaviorId);
-  const [param1, setParam1] = useState<number | undefined>(binding.param1);
-  const [param2, setParam2] = useState<number | undefined>(binding.param2);
+  const [behaviorId, setBehaviorId] = useState(
+    normalizeNumericValue(binding.behaviorId)
+  );
+  const [param1, setParam1] = useState<number | undefined>(
+    normalizeNumericValue(binding.param1)
+  );
+  const [param2, setParam2] = useState<number | undefined>(
+    normalizeNumericValue(binding.param2)
+  );
 
   const metadata = useMemo(
-    () => behaviors.find((b) => b.id == behaviorId)?.metadata,
+    () =>
+      behaviors.find((b) => normalizeNumericValue(b.id) === behaviorId)?.metadata,
     [behaviorId, behaviors]
   );
 
   const sortedBehaviors = useMemo(
-    () => [...behaviors].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    () =>
+      [...behaviors].sort((a, b) => getBehaviorLabel(a).localeCompare(getBehaviorLabel(b))),
     [behaviors]
   );
 
+  const selectableBehaviors = useMemo(() => {
+    if (sortedBehaviors.some((behavior) => normalizeNumericValue(behavior.id) === behaviorId)) {
+      return sortedBehaviors;
+    }
+
+    return [
+      {
+        id: behaviorId,
+        displayName: `Behavior ${behaviorId}`,
+        metadata: [],
+      } as GetBehaviorDetailsResponse,
+      ...sortedBehaviors,
+    ];
+  }, [behaviorId, sortedBehaviors]);
+
+  const normalizedBinding = useMemo(
+    () => ({
+      behaviorId: normalizeNumericValue(binding.behaviorId),
+      param1: normalizeNumericValue(binding.param1),
+      param2: normalizeNumericValue(binding.param2),
+    }),
+    [binding]
+  );
+  const previousBindingRef = useRef(normalizedBinding);
+  const isExternalBindingChange =
+    previousBindingRef.current.behaviorId !== normalizedBinding.behaviorId ||
+    previousBindingRef.current.param1 !== normalizedBinding.param1 ||
+    previousBindingRef.current.param2 !== normalizedBinding.param2;
+
   useEffect(() => {
+    if (isExternalBindingChange) {
+      return;
+    }
+
     if (
-      binding.behaviorId === behaviorId &&
-      binding.param1 === param1 &&
-      binding.param2 === param2
+      normalizedBinding.behaviorId === behaviorId &&
+      normalizedBinding.param1 === param1 &&
+      normalizedBinding.param2 === param2
     ) {
       return;
     }
@@ -90,13 +164,23 @@ export const BehaviorBindingPicker = ({
         param2: param2 || 0,
       });
     }
-  }, [behaviorId, param1, param2]);
+  }, [
+    behaviorId,
+    isExternalBindingChange,
+    metadata,
+    normalizedBinding,
+    onBindingChanged,
+    layers,
+    param1,
+    param2,
+  ]);
 
   useEffect(() => {
-    setBehaviorId(binding.behaviorId);
-    setParam1(binding.param1);
-    setParam2(binding.param2);
-  }, [binding]);
+    previousBindingRef.current = normalizedBinding;
+    setBehaviorId(normalizedBinding.behaviorId);
+    setParam1(normalizedBinding.param1);
+    setParam2(normalizedBinding.param2);
+  }, [normalizedBinding]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -106,14 +190,14 @@ export const BehaviorBindingPicker = ({
           value={behaviorId}
           className="h-8 rounded"
           onChange={(e) => {
-            setBehaviorId(parseInt(e.target.value));
+            setBehaviorId(normalizeNumericValue(e.target.value));
             setParam1(0);
             setParam2(0);
           }}
         >
-          {sortedBehaviors.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.displayName}
+          {selectableBehaviors.map((b) => (
+            <option key={normalizeNumericValue(b.id)} value={normalizeNumericValue(b.id)}>
+              {getBehaviorLabel(b)}
             </option>
           ))}
         </select>

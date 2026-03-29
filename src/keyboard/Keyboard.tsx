@@ -26,22 +26,69 @@ import { useConnectedDeviceData } from "../rpc/useConnectedDeviceData";
 import { ConnectionContext } from "../rpc/ConnectionContext";
 import { DoCallback, UndoRedoContext } from "../undoRedo";
 import { BehaviorBindingPicker } from "../behaviors/BehaviorBindingPicker";
+import { getBehaviorLabel } from "../behaviors/behaviorNames";
 import { produce } from "immer";
 import { LockStateContext } from "../rpc/LockStateContext";
 import { LockState } from "@zmkfirmware/zmk-studio-ts-client/core";
 import { deserializeLayoutZoom, LayoutZoom } from "./PhysicalLayout";
 import { useLocalStorageState } from "../misc/useLocalStorageState";
 import { DeviceSettings } from "./DeviceSettings";
+import { bb9981Rpc } from "../rpc/bb9981Rpc";
 
 type MainView = "keymap" | "settings";
 
-type BehaviorMap = Record<number, GetBehaviorDetailsResponse>;
+type StudioBehaviorDetails = GetBehaviorDetailsResponse & {
+  isUserDefined?: boolean;
+};
 
-function useBehaviors(): BehaviorMap {
+type BehaviorMap = Record<number, StudioBehaviorDetails>;
+
+function normalizeBehaviorId(value: unknown, fallback = 0): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (value && typeof value === "object") {
+    const candidate = value as { toNumber?: () => number; low?: number };
+
+    if (typeof candidate.toNumber === "function") {
+      try {
+        const parsed = candidate.toNumber();
+        return Number.isFinite(parsed) ? parsed : fallback;
+      } catch (_error) {
+        return fallback;
+      }
+    }
+
+    if (typeof candidate.low === "number") {
+      return candidate.low;
+    }
+  }
+
+  return fallback;
+}
+
+function useBehaviors(keymap?: Keymap | null): BehaviorMap {
   let connection = useContext(ConnectionContext);
   let lockState = useContext(LockStateContext);
 
   const [behaviors, setBehaviors] = useState<BehaviorMap>({});
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    return bb9981Rpc.behaviors.onChange(() => {
+      setRefreshVersion((version) => version + 1);
+    });
+  }, []);
 
   useEffect(() => {
     if (
@@ -53,8 +100,6 @@ function useBehaviors(): BehaviorMap {
     }
 
     async function startRequest() {
-      setBehaviors({});
-
       if (!connection.conn) {
         return;
       }
@@ -68,8 +113,20 @@ function useBehaviors(): BehaviorMap {
         let behavior_list = await call_rpc(connection.conn, get_behaviors);
         if (!ignore) {
           let behavior_map: BehaviorMap = {};
+          const behaviorIds = new Set<number>();
+
           for (let behaviorId of behavior_list.behaviors?.listAllBehaviors
             ?.behaviors || []) {
+            behaviorIds.add(normalizeBehaviorId(behaviorId));
+          }
+
+          for (const layer of keymap?.layers ?? []) {
+            for (const binding of layer.bindings ?? []) {
+              behaviorIds.add(normalizeBehaviorId(binding.behaviorId));
+            }
+          }
+
+          for (let behaviorId of behaviorIds) {
             if (ignore) {
               break;
             }
@@ -78,11 +135,19 @@ function useBehaviors(): BehaviorMap {
               requestId: 0,
             };
             let behavior_details = await call_rpc(connection.conn, details_req);
-            let dets: GetBehaviorDetailsResponse | undefined =
+            let dets: StudioBehaviorDetails | undefined =
               behavior_details?.behaviors?.getBehaviorDetails;
 
             if (dets) {
-              behavior_map[dets.id] = dets;
+              const normalizedDetails: StudioBehaviorDetails = {
+                ...dets,
+                id: normalizeBehaviorId(dets.id),
+                displayName: getBehaviorLabel({
+                  ...dets,
+                  id: normalizeBehaviorId(dets.id),
+                }),
+              };
+              behavior_map[normalizedDetails.id] = normalizedDetails;
             }
           }
 
@@ -104,7 +169,7 @@ function useBehaviors(): BehaviorMap {
     return () => {
       ignore = true;
     };
-  }, [connection, lockState]);
+  }, [connection, keymap, lockState, refreshVersion]);
 
   return behaviors;
 }
@@ -199,7 +264,7 @@ export default function Keyboard() {
   const [selectedKeyPosition, setSelectedKeyPosition] = useState<
     number | undefined
   >(undefined);
-  const behaviors = useBehaviors();
+  const behaviors = useBehaviors(keymap);
   const [mainView, setMainView] = useState<MainView>("keymap");
 
   const conn = useContext(ConnectionContext);
@@ -632,6 +697,7 @@ export default function Keyboard() {
           {keymap && selectedBinding && (
             <div className="p-2 col-start-2 row-start-2 bg-base-200">
               <BehaviorBindingPicker
+                key={`${selectedLayerIndex}:${selectedKeyPosition ?? "none"}`}
                 binding={selectedBinding}
                 behaviors={Object.values(behaviors)}
                 layers={layerInfo}

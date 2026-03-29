@@ -11,6 +11,7 @@
 
 LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 
+#include <zmk/studio/macro_subsystem.h>
 #include <zmk/studio/rpc.h>
 
 #define MAX_MACROS 32
@@ -212,6 +213,32 @@ static int macro_settings_reset(void) {
     macros_dirty = false;
     memset(runtime_macros, 0, sizeof(runtime_macros));
     return 0;
+}
+
+bool zmk_studio_macros_uses_behavior(uint32_t behavior_id) {
+    for (int macro_idx = 0; macro_idx < runtime_macro_count; macro_idx++) {
+        const struct macro_rpc *macro = &runtime_macros[macro_idx];
+
+        for (int step_idx = 0; step_idx < macro->step_count; step_idx++) {
+            const struct macro_step_rpc *step = &macro->steps[step_idx];
+
+            switch (step->type) {
+            case MACRO_STEP_TAP:
+            case MACRO_STEP_PRESS:
+            case MACRO_STEP_RELEASE:
+                if (step->behavior_id == behavior_id) {
+                    return true;
+                }
+                break;
+            case MACRO_STEP_WAIT:
+            case MACRO_STEP_PAUSE_FOR_RELEASE:
+            default:
+                break;
+            }
+        }
+    }
+
+    return false;
 }
 
 ZMK_RPC_SUBSYSTEM_HANDLER(macros, list_all_macros, ZMK_STUDIO_RPC_HANDLER_SECURED);

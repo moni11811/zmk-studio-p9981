@@ -11,6 +11,7 @@
 
 LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 
+#include <zmk/studio/combo_subsystem.h>
 #include <zmk/studio/rpc.h>
 
 #define MAX_COMBOS 32
@@ -186,6 +187,16 @@ static int combo_settings_reset(void) {
     combos_dirty = false;
     memset(runtime_combos, 0, sizeof(runtime_combos));
     return 0;
+}
+
+bool zmk_studio_combos_uses_behavior(uint32_t behavior_id) {
+    for (int combo_idx = 0; combo_idx < runtime_combo_count; combo_idx++) {
+        if (runtime_combos[combo_idx].behavior_id == behavior_id) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 ZMK_RPC_SUBSYSTEM_HANDLER(combos, list_all_combos, ZMK_STUDIO_RPC_HANDLER_SECURED);

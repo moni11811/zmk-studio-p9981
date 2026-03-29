@@ -54,6 +54,48 @@ static bool runtime_scroll_inverted = false;
 static uint8_t runtime_scroll_speed = 5;
 static uint16_t runtime_poll_interval_ms = CONFIG_A320_POLL_INTERVAL_MS;
 static bool runtime_precision_mode_enabled = true;
+static bool runtime_scroll_mode_switch_enabled = true;
+
+static void reset_scroll_state(void) {
+    sum_dx = 0;
+    sum_dy = 0;
+    sample_cnt = 0;
+    last_read_time = 0;
+}
+
+/*
+ * Keep the vendor scroll gesture detection untouched and only allow faster
+ * vertical output above the known-good default range. Values 1-5 all map to
+ * baseline behavior so changing the setting cannot make scrolling slower or
+ * "disappear" again.
+ */
+static int16_t boost_vertical_scroll_step(int16_t value, uint8_t speed) {
+    static const uint16_t multiplier_q8[] = {256, 256, 256, 256, 256,
+                                             320, 384, 448, 512, 640};
+
+    if (value == 0 || speed <= 5) {
+        return value;
+    }
+
+    speed = CLAMP(speed, 1, 10);
+
+    int32_t magnitude = value < 0 ? -value : value;
+    int32_t scaled = magnitude * multiplier_q8[speed - 1];
+    scaled = (scaled + 128) / 256;
+    scaled = MAX(1, scaled);
+
+    return value < 0 ? -scaled : scaled;
+}
+
+/*
+ * The board's scroll gesture detection is stable at the vendor's default
+ * 10 ms cadence. Let Studio tune pointer polling, but keep scroll mode on the
+ * known-good internal cadence so changing polling interval does not distort
+ * scroll behavior.
+ */
+static uint16_t get_effective_poll_interval_ms(bool scroll_mode_active) {
+    return scroll_mode_active ? CONFIG_A320_POLL_INTERVAL_MS : runtime_poll_interval_ms;
+}
 
 /* =========================
  *   Data & Config structs
@@ -111,6 +153,9 @@ static void a320_poll_work_handler(struct k_work *work) {
     int pin_state = gpio_pin_get(motion_gpio_dev, MOTION_GPIO_PIN);
 
     bool capslock = current_indicators & HID_INDICATORS_CAPS_LOCK;
+    bool scroll_mode_active = runtime_scroll_mode_switch_enabled && capslock;
+
+    uint16_t effective_poll_interval_ms = get_effective_poll_interval_ms(scroll_mode_active);
 
     if (!runtime_enabled) {
         touched = false;
@@ -119,12 +164,10 @@ static void a320_poll_work_handler(struct k_work *work) {
     }
 
     /* ======== Clear CapsLock residual scroll data ======== */
-    if (last_capslock && !capslock) {
-        sum_dx = 0;
-        sum_dy = 0;
-        sample_cnt = 0;
+    if (last_capslock && !scroll_mode_active) {
+        reset_scroll_state();
     }
-    last_capslock = capslock;
+    last_capslock = scroll_mode_active;
     /* ====================================================== */
 
     if (pin_state == 0) {
@@ -138,7 +181,7 @@ static void a320_poll_work_handler(struct k_work *work) {
             }
 
             /* === Normal cursor movement when CapsLock is off === */
-            if (!capslock) {
+            if (!scroll_mode_active) {
                 uint8_t tp_led_brt = indicator_tp_get_last_valid_brightness();
                 float tp_factor = 0.4f + 0.01f * tp_led_brt;
                 float sensitivity_factor = 0.5f + 0.1f * runtime_sensitivity;
@@ -181,7 +224,8 @@ static void a320_poll_work_handler(struct k_work *work) {
                 sum_dy += dy;
                 sample_cnt++;
 
-                uint8_t threshold = MAX(1, 40 / MAX(runtime_poll_interval_ms, 1));
+                uint16_t poll_interval = MAX(effective_poll_interval_ms, 1);
+                uint8_t threshold = MAX(1, (40 + poll_interval - 1) / poll_interval);
 
                 if (sample_cnt >= threshold) {
                     int16_t sx = sum_dx;
@@ -213,18 +257,7 @@ static void a320_poll_work_handler(struct k_work *work) {
                         scroll_y = 0;
                     }
 
-                    if (runtime_scroll_speed != 5) {
-                        scroll_x = scroll_x * runtime_scroll_speed / 5;
-                        scroll_y = scroll_y * runtime_scroll_speed / 5;
-                    }
-
-                    if (scroll_x == 0 && sx != 0) {
-                        scroll_x = (sx > 0) ? 1 : -1;
-                    }
-
-                    if (scroll_y == 0 && sy != 0) {
-                        scroll_y = (sy > 0) ? 1 : -1;
-                    }
+                    scroll_y = boost_vertical_scroll_step(scroll_y, runtime_scroll_speed);
 
                     if (runtime_scroll_inverted) {
                         scroll_y = -scroll_y;
@@ -239,7 +272,7 @@ static void a320_poll_work_handler(struct k_work *work) {
         touched = false;
     }
 
-    k_work_reschedule(&data->poll_work, K_MSEC(runtime_poll_interval_ms));
+    k_work_reschedule(&data->poll_work, K_MSEC(effective_poll_interval_ms));
 }
 
 /* =========================
@@ -331,11 +364,13 @@ bool zmk_bbp9981_trackpad_get_scroll_inverted(void) { return runtime_scroll_inve
 
 void zmk_bbp9981_trackpad_set_scroll_speed(uint8_t speed) {
     runtime_scroll_speed = CLAMP(speed, 1, 10);
+    reset_scroll_state();
 }
 uint8_t zmk_bbp9981_trackpad_get_scroll_speed(void) { return runtime_scroll_speed; }
 
 void zmk_bbp9981_trackpad_set_poll_interval_ms(uint16_t interval_ms) {
     runtime_poll_interval_ms = CLAMP(interval_ms, 1, 100);
+    reset_scroll_state();
 }
 uint16_t zmk_bbp9981_trackpad_get_poll_interval_ms(void) { return runtime_poll_interval_ms; }
 
@@ -344,6 +379,17 @@ void zmk_bbp9981_trackpad_set_precision_mode_enabled(bool enabled) {
 }
 bool zmk_bbp9981_trackpad_get_precision_mode_enabled(void) {
     return runtime_precision_mode_enabled;
+}
+
+void zmk_bbp9981_trackpad_set_scroll_mode_switch_enabled(bool enabled) {
+    runtime_scroll_mode_switch_enabled = enabled;
+    if (!enabled) {
+        last_capslock = false;
+    }
+    reset_scroll_state();
+}
+bool zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled(void) {
+    return runtime_scroll_mode_switch_enabled;
 }
 
 bool tp_is_touched(void) { return zmk_bbp9981_trackpad_is_touched(); }

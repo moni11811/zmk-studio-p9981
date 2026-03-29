@@ -14,6 +14,7 @@
 #include <zmk/hid_indicators.h>
 #include <zmk/backlight.h>
 #include <zmk/activity.h>
+#include <zmk/bbp9981_trackpad.h>
 #include "trackpad_led.h"
 #include "a320_0x57.h"
 
@@ -119,7 +120,8 @@ static void animation_work_handler(struct k_work *work) {
 
 static void polling_work_handler(struct k_work *work) {
     enum zmk_transport transport = zmk_endpoint_get_selected().transport;
-    bool current_capslock = (zmk_hid_indicators_get_current_profile() & HID_INDICATORS_CAPS_LOCK);
+    bool current_capslock = zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled() &&
+                            (zmk_hid_indicators_get_current_profile() & HID_INDICATORS_CAPS_LOCK);
     bool current_touch = tp_is_touched();
     bool current_active = (zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
     uint8_t current_brt = zmk_backlight_get_brt();

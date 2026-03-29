@@ -26,6 +26,8 @@ void zmk_bbp9981_trackpad_set_poll_interval_ms(uint16_t interval_ms);
 uint16_t zmk_bbp9981_trackpad_get_poll_interval_ms(void);
 void zmk_bbp9981_trackpad_set_precision_mode_enabled(bool enabled);
 bool zmk_bbp9981_trackpad_get_precision_mode_enabled(void);
+void zmk_bbp9981_trackpad_set_scroll_mode_switch_enabled(bool enabled);
+bool zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled(void);
 
 #ifdef __cplusplus
 }

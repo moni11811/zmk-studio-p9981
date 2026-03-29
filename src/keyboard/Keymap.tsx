@@ -3,6 +3,7 @@ import {
   Keymap as KeymapMsg,
 } from "@zmkfirmware/zmk-studio-ts-client/keymap";
 import type { GetBehaviorDetailsResponse } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
+import { getBehaviorLabel } from "../behaviors/behaviorNames";
 
 import {
   LayoutZoom,
@@ -11,6 +12,40 @@ import {
 import { HidUsageLabel } from "./HidUsageLabel";
 
 type BehaviorMap = Record<number, GetBehaviorDetailsResponse>;
+
+function normalizeBehaviorId(value: unknown, fallback = 0): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (value && typeof value === "object") {
+    const candidate = value as { toNumber?: () => number; low?: number };
+
+    if (typeof candidate.toNumber === "function") {
+      try {
+        const parsed = candidate.toNumber();
+        return Number.isFinite(parsed) ? parsed : fallback;
+      } catch (_error) {
+        return fallback;
+      }
+    }
+
+    if (typeof candidate.low === "number") {
+      return candidate.low;
+    }
+  }
+
+  return fallback;
+}
 
 export interface KeymapProps {
   layout: PhysicalLayout;
@@ -51,8 +86,19 @@ export const Keymap = ({
     return {
       id: `${keymap.layers[selectedLayerIndex].id}-${i}`,
       header:
-        behaviors[keymap.layers[selectedLayerIndex].bindings[i].behaviorId]
-          ?.displayName || "Unknown",
+        (
+          behaviors[
+            normalizeBehaviorId(keymap.layers[selectedLayerIndex].bindings[i].behaviorId)
+          ] &&
+          getBehaviorLabel(
+            behaviors[
+              normalizeBehaviorId(keymap.layers[selectedLayerIndex].bindings[i].behaviorId)
+            ]
+          )
+        ) ||
+        `Behavior ${normalizeBehaviorId(
+          keymap.layers[selectedLayerIndex].bindings[i].behaviorId
+        )}`,
       x: k.x / 100.0,
       y: k.y / 100.0,
       width: k.width / 100,

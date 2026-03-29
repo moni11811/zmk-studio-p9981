@@ -8,6 +8,15 @@ This repository is intentionally trimmed down for sharing:
 - the BBP9981 firmware source slice is under `firmware/source/`
 - a prebuilt firmware image is included at `firmware/releases/bbp9981-zmk.uf2`
 
+## What Was Removed
+
+This public repo does not include:
+
+- local build output such as `node_modules`, `dist`, or `src-tauri/target`
+- machine-specific keymap search logic tied to one filesystem layout
+- prebuilt app binaries committed into the repository tree
+
+The repository tree stays source-only. Public desktop binaries are published as GitHub Release assets built from this sanitized repo on GitHub-hosted runners, so they do not carry local workspace paths from the original development machine. The firmware UF2 is also included in `firmware/releases/` for convenience.
 ## App
 
 The app source at the repository root contains the BBP9981-focused Studio changes, including:
@@ -37,6 +46,8 @@ For a desktop app package:
 npm run tauri build
 ```
 
+For public binaries, prefer the GitHub Releases page instead of local build output.
+
 ## Firmware
 
 `firmware/source/` is a minimal source export of the BBP9981 firmware work. It is not a full ZMK checkout. Instead, it mirrors the relative paths of the files that were changed or added on top of upstream ZMK so they can be overlaid onto a matching ZMK tree.
@@ -60,10 +71,18 @@ firmware/releases/bbp9981-zmk.uf2
 SHA-256:
 
 ```text
-764b8a3f4a3eea44110bdd66fee4ddfa607c974a844624ec91b145f2bd2baded
+80ea5c45c0403cd0585f91c9bc3fa419113cc77cce10f8c4480ebf6fcf1ad09a
 ```
 
 If you are packaging a fresh app binary from this source and want to publish that binary, do a final strings/path check on the produced executable before distributing it.
+
+## Releases
+
+The `v1` release is intended to contain:
+
+- a sanitized macOS build generated on GitHub Actions
+- a Windows executable generated on GitHub Actions
+- the matching firmware UF2
 
 ## Upstream
 

@@ -1,5 +1,10 @@
 import type { RpcConnection } from "@zmkfirmware/zmk-studio-ts-client";
 import { call_rpc } from "./logging";
+import {
+  CreateBehaviorResponseCode,
+  DeleteBehaviorResponseCode,
+  RenameBehaviorResponseCode,
+} from "./bb9981Types";
 import type {
   MacroDetails,
   MacroStep,
@@ -31,6 +36,9 @@ export type {
 
 export {
   SetBehaviorRuntimeConfigResponseCode,
+  CreateBehaviorResponseCode,
+  DeleteBehaviorResponseCode,
+  RenameBehaviorResponseCode,
   SetMacroStepsResponseCode,
   SetComboResponseCode,
   SetConfigResponseCode,
@@ -46,12 +54,14 @@ const listeners: {
   bluetooth: ChangeListener<BluetoothConfig>[];
   macros: ChangeListener<MacroDetails[]>[];
   combos: ChangeListener<ComboDetails[]>[];
+  behaviors: (() => void)[];
 } = {
   trackpad: [],
   backlight: [],
   bluetooth: [],
   macros: [],
   combos: [],
+  behaviors: [],
 };
 
 export function setBb9981RpcConnection(conn: RpcConnection | null) {
@@ -134,6 +144,38 @@ function encodeHoldTapFlavor(flavor: HoldTapFlavor): number {
   }
 }
 
+function toNumber(value: any, fallback = 0): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+
+  if (value && typeof value === "object") {
+    if (typeof value.toNumber === "function") {
+      try {
+        const parsed = value.toNumber();
+        return Number.isFinite(parsed) ? parsed : fallback;
+      } catch (_error) {
+        return fallback;
+      }
+    }
+
+    if (typeof value.low === "number") {
+      return value.low;
+    }
+  }
+
+  return fallback;
+}
+
 function mapBehaviorRuntimeConfig(config: any): BehaviorRuntimeConfig | undefined {
   if (!config) {
     return undefined;
@@ -142,25 +184,25 @@ function mapBehaviorRuntimeConfig(config: any): BehaviorRuntimeConfig | undefine
   if (config.holdTap) {
     return {
       type: "holdTap",
-      behaviorId: config.behaviorId ?? 0,
-      tappingTermMs: config.holdTap.tappingTermMs ?? 0,
-      quickTapMs: config.holdTap.quickTapMs ?? -1,
-      requirePriorIdleMs: config.holdTap.requirePriorIdleMs ?? -1,
+      behaviorId: toNumber(config.behaviorId),
+      tappingTermMs: toNumber(config.holdTap.tappingTermMs),
+      quickTapMs: toNumber(config.holdTap.quickTapMs, -1),
+      requirePriorIdleMs: toNumber(config.holdTap.requirePriorIdleMs, -1),
       flavor: mapHoldTapFlavor(config.holdTap.flavor),
-      holdBehaviorId: config.holdTap.holdBehaviorId ?? 0,
-      tapBehaviorId: config.holdTap.tapBehaviorId ?? 0,
+      holdBehaviorId: toNumber(config.holdTap.holdBehaviorId),
+      tapBehaviorId: toNumber(config.holdTap.tapBehaviorId),
     };
   }
 
   if (config.tapDance) {
     return {
       type: "tapDance",
-      behaviorId: config.behaviorId ?? 0,
-      tappingTermMs: config.tapDance.tappingTermMs ?? 0,
+      behaviorId: toNumber(config.behaviorId),
+      tappingTermMs: toNumber(config.tapDance.tappingTermMs),
       bindings: (config.tapDance.bindings ?? []).map((binding: any) => ({
-        behaviorId: binding.behaviorId ?? 0,
-        param1: binding.param1 ?? 0,
-        param2: binding.param2 ?? 0,
+        behaviorId: toNumber(binding.behaviorId),
+        param1: toNumber(binding.param1),
+        param2: toNumber(binding.param2),
       })),
     };
   }
@@ -168,16 +210,27 @@ function mapBehaviorRuntimeConfig(config: any): BehaviorRuntimeConfig | undefine
   if (config.stickyKey) {
     return {
       type: "stickyKey",
-      behaviorId: config.behaviorId ?? 0,
-      releaseAfterMs: config.stickyKey.releaseAfterMs ?? 0,
+      behaviorId: toNumber(config.behaviorId),
+      releaseAfterMs: toNumber(config.stickyKey.releaseAfterMs),
       quickRelease: config.stickyKey.quickRelease ?? false,
       lazy: config.stickyKey.lazy ?? false,
       ignoreModifiers: config.stickyKey.ignoreModifiers ?? false,
-      bindingBehaviorId: config.stickyKey.behaviorId ?? 0,
+      bindingBehaviorId: toNumber(config.stickyKey.behaviorId),
     };
   }
 
   return undefined;
+}
+
+function mapBehaviorDetails(details: any): any {
+  if (!details) {
+    return undefined;
+  }
+
+  return {
+    ...details,
+    id: toNumber(details.id),
+  };
 }
 
 function mapTrackpadConfig(config: any): TrackpadConfig {
@@ -189,6 +242,8 @@ function mapTrackpadConfig(config: any): TrackpadConfig {
     scrollSpeed: config.scrollSpeed ?? 5,
     pollingIntervalMs: config.pollingIntervalMs ?? 10,
     precisionModeEnabled: config.precisionModeEnabled ?? true,
+    scrollModeSwitch:
+      config.scrollModeSwitch === "disabled" ? "disabled" : "capslock",
   };
 }
 
@@ -249,6 +304,10 @@ async function notifyCombosChanged() {
 async function notifyTrackpadChanged() {
   const config = await settingsRpc.getTrackpadConfig();
   listeners.trackpad.forEach((cb) => cb(config));
+}
+
+function notifyBehaviorsChanged() {
+  listeners.behaviors.forEach((cb) => cb());
 }
 
 async function notifyBacklightChanged() {
@@ -577,6 +636,18 @@ const settingsRpc = {
 };
 
 const behaviorsRpc = {
+  async getBehaviorDetails(behaviorId: number): Promise<any | undefined> {
+    try {
+      const resp = (await call_rpc(getConnection(), {
+        behaviors: { getBehaviorDetails: { behaviorId } },
+      } as any)) as any;
+
+      return mapBehaviorDetails(resp.behaviors?.getBehaviorDetails);
+    } catch (_error) {
+      return undefined;
+    }
+  },
+
   async getBehaviorRuntimeConfig(
     behaviorId: number
   ): Promise<BehaviorRuntimeConfig | undefined> {
@@ -630,7 +701,83 @@ const behaviorsRpc = {
       behaviors: { setBehaviorRuntimeConfig: { config: behaviorConfig } },
     } as any)) as any;
 
+    notifyBehaviorsChanged();
     return resp.behaviors?.setBehaviorRuntimeConfig ?? 0;
+  },
+
+  async createBehavior(
+    displayName: string,
+    config: BehaviorRuntimeConfig
+  ): Promise<{ ok?: number; err?: CreateBehaviorResponseCode }> {
+    const behaviorConfig =
+      config.type === "holdTap"
+        ? {
+            behaviorId: 0,
+            holdTap: {
+              tappingTermMs: config.tappingTermMs,
+              quickTapMs: config.quickTapMs,
+              requirePriorIdleMs: config.requirePriorIdleMs,
+              flavor: encodeHoldTapFlavor(config.flavor),
+              holdBehaviorId: config.holdBehaviorId,
+              tapBehaviorId: config.tapBehaviorId,
+            },
+          }
+        : config.type === "tapDance"
+          ? {
+              behaviorId: 0,
+              tapDance: {
+                tappingTermMs: config.tappingTermMs,
+                bindings: config.bindings,
+              },
+            }
+          : {
+              behaviorId: 0,
+              stickyKey: {
+                releaseAfterMs: config.releaseAfterMs,
+                quickRelease: config.quickRelease,
+                lazy: config.lazy,
+                ignoreModifiers: config.ignoreModifiers,
+                behaviorId: config.bindingBehaviorId,
+              },
+            };
+
+    const resp = (await call_rpc(getConnection(), {
+      behaviors: { createBehavior: { displayName, config: behaviorConfig } },
+    } as any)) as any;
+
+    notifyBehaviorsChanged();
+    return resp.behaviors?.createBehavior ?? { err: CreateBehaviorResponseCode.ERR_PERSIST };
+  },
+
+  async deleteBehavior(
+    behaviorId: number
+  ): Promise<DeleteBehaviorResponseCode> {
+    const resp = (await call_rpc(getConnection(), {
+      behaviors: { deleteBehavior: { behaviorId } },
+    } as any)) as any;
+
+    notifyBehaviorsChanged();
+    return resp.behaviors?.deleteBehavior ?? DeleteBehaviorResponseCode.ERR_PERSIST;
+  },
+
+  async renameBehavior(
+    behaviorId: number,
+    displayName: string
+  ): Promise<RenameBehaviorResponseCode> {
+    const resp = (await call_rpc(getConnection(), {
+      behaviors: { renameBehavior: { behaviorId, displayName } },
+    } as any)) as any;
+
+    notifyBehaviorsChanged();
+    return resp.behaviors?.renameBehavior ?? RenameBehaviorResponseCode.ERR_PERSIST;
+  },
+
+  onChange(cb: () => void): () => void {
+    listeners.behaviors.push(cb);
+    return () => {
+      const idx = listeners.behaviors.indexOf(cb);
+      if (idx >= 0) listeners.behaviors.splice(idx, 1);
+    };
   },
 };
 

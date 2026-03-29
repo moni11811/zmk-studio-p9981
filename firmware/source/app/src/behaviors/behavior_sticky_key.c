@@ -19,10 +19,13 @@
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/hid.h>
 #include <zmk/keymap.h>
+#include <zmk/studio/runtime_behaviors.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+#define ZMK_STUDIO_RUNTIME_STICKY_KEY_SLOTS 8
 
 #define KEY_PRESS DEVICE_DT_NAME(DT_INST(0, zmk_behavior_key_press))
 
@@ -36,6 +39,9 @@ struct behavior_sticky_key_config {
     bool lazy;
     bool ignore_modifiers;
     struct zmk_behavior_binding behavior;
+    bool studio_runtime_slot;
+    bool studio_runtime_active;
+    char studio_runtime_display_name[32];
 };
 
 struct active_sticky_key {
@@ -56,6 +62,10 @@ struct active_sticky_key {
 };
 
 struct active_sticky_key active_sticky_keys[ZMK_BHV_STICKY_KEY_MAX_HELD] = {};
+
+static bool sticky_key_config_is_active(const struct behavior_sticky_key_config *cfg) {
+    return !cfg->studio_runtime_slot || cfg->studio_runtime_active;
+}
 
 static struct active_sticky_key *store_sticky_key(struct zmk_behavior_binding_event *event,
                                                   uint32_t param1,
@@ -157,6 +167,11 @@ static int on_sticky_key_binding_pressed(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_sticky_key_config *cfg = dev->config;
+
+    if (!sticky_key_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     struct active_sticky_key *sticky_key;
     sticky_key = find_sticky_key(event.position, cfg->behavior, binding->param1);
     if (sticky_key != NULL) {
@@ -183,6 +198,11 @@ static int on_sticky_key_binding_released(struct zmk_behavior_binding *binding,
                                           struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_sticky_key_config *cfg = dev->config;
+
+    if (!sticky_key_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     struct active_sticky_key *sticky_key =
         find_sticky_key(event.position, cfg->behavior, binding->param1);
     if (sticky_key == NULL) {
@@ -214,6 +234,10 @@ static int sticky_key_parameter_domains(const struct device *sk,
 
     struct behavior_parameter_metadata child_metadata;
 
+    if (!sticky_key_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     int err = behavior_get_parameter_metadata(zmk_behavior_get_binding(cfg->behavior.behavior_dev),
                                               &child_metadata);
     if (err < 0) {
@@ -240,6 +264,10 @@ static int get_sticky_key_runtime_config(const struct device *dev,
                                          struct behavior_runtime_config *config) {
     const struct behavior_sticky_key_config *cfg = dev->config;
 
+    if (!sticky_key_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     *config = (struct behavior_runtime_config){
         .type = BEHAVIOR_RUNTIME_CONFIG_TYPE_STICKY_KEY,
         .data.sticky_key =
@@ -257,12 +285,17 @@ static int get_sticky_key_runtime_config(const struct device *dev,
 
 static int set_sticky_key_runtime_config(const struct device *dev,
                                          const struct behavior_runtime_config *config) {
+    struct behavior_sticky_key_config *cfg = (struct behavior_sticky_key_config *)dev->config;
+
+    if (!sticky_key_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     if (config->type != BEHAVIOR_RUNTIME_CONFIG_TYPE_STICKY_KEY) {
         return -EINVAL;
     }
 
     const struct behavior_sticky_key_runtime_config *runtime = &config->data.sticky_key;
-    struct behavior_sticky_key_config *cfg = (struct behavior_sticky_key_config *)dev->config;
 
     if (!runtime->behavior_dev || runtime->release_after_ms == 0 ||
         strcmp(runtime->behavior_dev, dev->name) == 0) {
@@ -447,5 +480,39 @@ static int behavior_sticky_key_init(const struct device *dev) {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_sticky_key_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KP_INST)
+
+#define STUDIO_RUNTIME_STICKY_KEY_INST(n, _)                                                       \
+    static struct behavior_sticky_key_config behavior_sticky_key_runtime_config_##n = {            \
+        .behavior = {.behavior_dev = "key_press"},                                                  \
+        .release_after_ms = 1000,                                                                   \
+        .ignore_modifiers = true,                                                                   \
+        .studio_runtime_slot = true,                                                                \
+    };                                                                                              \
+    DEVICE_DEFINE(behavior_sticky_key_runtime_##n, "studio_runtime_sticky_key_" STRINGIFY(n),      \
+                  behavior_sticky_key_init, NULL, NULL, &behavior_sticky_key_runtime_config_##n,   \
+                  POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,                                 \
+                  &behavior_sticky_key_driver_api);                                                 \
+    static const STRUCT_SECTION_ITERABLE(zmk_behavior_ref,                                          \
+                                         behavior_sticky_key_runtime_ref_##n) = {                   \
+        .device = DEVICE_GET(behavior_sticky_key_runtime_##n),                                      \
+        .metadata =                                                                                 \
+            {                                                                                       \
+                .display_name = behavior_sticky_key_runtime_config_##n.studio_runtime_display_name, \
+            },                                                                                      \
+    };                                                                                              \
+    static STRUCT_SECTION_ITERABLE(zmk_behavior_local_id_map,                                       \
+                                   behavior_sticky_key_runtime_id_##n) = {                          \
+        .device = DEVICE_GET(behavior_sticky_key_runtime_##n),                                      \
+    };                                                                                              \
+    ZMK_STUDIO_RUNTIME_BEHAVIOR_SLOT_DEFINE(behavior_sticky_key_runtime_slot_##n,                   \
+                                            DEVICE_GET(behavior_sticky_key_runtime_##n),            \
+                                            BEHAVIOR_RUNTIME_CONFIG_TYPE_STICKY_KEY,                \
+                                            &behavior_sticky_key_runtime_config_##n.studio_runtime_active, \
+                                            behavior_sticky_key_runtime_config_##n                  \
+                                                .studio_runtime_display_name,                       \
+                                            ARRAY_SIZE(behavior_sticky_key_runtime_config_##n       \
+                                                           .studio_runtime_display_name));
+
+LISTIFY(ZMK_STUDIO_RUNTIME_STICKY_KEY_SLOTS, STUDIO_RUNTIME_STICKY_KEY_INST, (;), _)
 
 #endif

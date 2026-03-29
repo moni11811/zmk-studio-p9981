@@ -16,10 +16,13 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/hid.h>
+#include <zmk/studio/runtime_behaviors.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+#define ZMK_STUDIO_RUNTIME_TAP_DANCE_SLOTS 8
 
 #define ZMK_BHV_TAP_DANCE_MAX_HELD CONFIG_ZMK_BEHAVIOR_TAP_DANCE_MAX_HELD
 
@@ -29,6 +32,9 @@ struct behavior_tap_dance_config {
     uint32_t tapping_term_ms;
     size_t behavior_count;
     struct zmk_behavior_binding *behaviors;
+    bool studio_runtime_slot;
+    bool studio_runtime_active;
+    char studio_runtime_display_name[32];
 };
 
 struct active_tap_dance {
@@ -52,6 +58,10 @@ struct active_tap_dance {
 };
 
 struct active_tap_dance active_tap_dances[ZMK_BHV_TAP_DANCE_MAX_HELD] = {};
+
+static bool tap_dance_config_is_active(const struct behavior_tap_dance_config *cfg) {
+    return !cfg->studio_runtime_slot || cfg->studio_runtime_active;
+}
 
 static struct active_tap_dance *find_tap_dance(uint32_t position) {
     for (int i = 0; i < ZMK_BHV_TAP_DANCE_MAX_HELD; i++) {
@@ -140,6 +150,11 @@ static int on_tap_dance_binding_pressed(struct zmk_behavior_binding *binding,
                                         struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_tap_dance_config *cfg = dev->config;
+
+    if (!tap_dance_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     struct active_tap_dance *tap_dance;
     tap_dance = find_tap_dance(event.position);
     if (tap_dance == NULL) {
@@ -168,6 +183,13 @@ static int on_tap_dance_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_tap_dance_binding_released(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    const struct behavior_tap_dance_config *cfg = dev->config;
+
+    if (!tap_dance_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     LOG_DBG("%d tap dance keybind released", event.position);
     struct active_tap_dance *tap_dance = find_tap_dance(event.position);
     if (tap_dance == NULL) {
@@ -199,9 +221,24 @@ void behavior_tap_dance_timer_handler(struct k_work *item) {
     release_tap_dance_behavior(tap_dance, tap_dance->release_at);
 }
 
+static int get_tap_dance_parameter_metadata(const struct device *dev,
+                                            struct behavior_parameter_metadata *metadata) {
+    const struct behavior_tap_dance_config *cfg = dev->config;
+
+    if (!tap_dance_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
+    return zmk_behavior_get_empty_param_metadata(dev, metadata);
+}
+
 static int get_tap_dance_runtime_config(const struct device *dev,
                                         struct behavior_runtime_config *config) {
     const struct behavior_tap_dance_config *cfg = dev->config;
+
+    if (!tap_dance_config_is_active(cfg)) {
+        return -ENODEV;
+    }
 
     if (cfg->behavior_count > ZMK_BEHAVIOR_RUNTIME_CONFIG_MAX_BINDINGS) {
         return -ENOMEM;
@@ -224,12 +261,17 @@ static int get_tap_dance_runtime_config(const struct device *dev,
 
 static int set_tap_dance_runtime_config(const struct device *dev,
                                         const struct behavior_runtime_config *config) {
+    struct behavior_tap_dance_config *cfg = (struct behavior_tap_dance_config *)dev->config;
+
+    if (!tap_dance_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     if (config->type != BEHAVIOR_RUNTIME_CONFIG_TYPE_TAP_DANCE) {
         return -EINVAL;
     }
 
     const struct behavior_tap_dance_runtime_config *runtime = &config->data.tap_dance;
-    struct behavior_tap_dance_config *cfg = (struct behavior_tap_dance_config *)dev->config;
 
     if (runtime->tapping_term_ms == 0 || runtime->binding_count == 0 ||
         runtime->binding_count > cfg->behavior_count ||
@@ -261,7 +303,7 @@ static const struct behavior_driver_api behavior_tap_dance_driver_api = {
     .binding_pressed = on_tap_dance_binding_pressed,
     .binding_released = on_tap_dance_binding_released,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
-    .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
+    .get_parameter_metadata = get_tap_dance_parameter_metadata,
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
     .get_runtime_config = get_tap_dance_runtime_config,
     .set_runtime_config = set_tap_dance_runtime_config,
@@ -333,5 +375,43 @@ static int behavior_tap_dance_init(const struct device *dev) {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_tap_dance_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KP_INST)
+
+#define STUDIO_RUNTIME_TAP_DANCE_INST(n, _)                                                        \
+    static struct zmk_behavior_binding behavior_tap_dance_runtime_bindings_##n[                    \
+        ZMK_BEHAVIOR_RUNTIME_CONFIG_MAX_BINDINGS] = {                                               \
+        {.behavior_dev = "none"},                                                                   \
+    };                                                                                              \
+    static struct behavior_tap_dance_config behavior_tap_dance_runtime_config_##n = {              \
+        .tapping_term_ms = 200,                                                                     \
+        .behaviors = behavior_tap_dance_runtime_bindings_##n,                                       \
+        .behavior_count = 1,                                                                        \
+        .studio_runtime_slot = true,                                                                \
+    };                                                                                              \
+    DEVICE_DEFINE(behavior_tap_dance_runtime_##n, "studio_runtime_tap_dance_" STRINGIFY(n),        \
+                  behavior_tap_dance_init, NULL, NULL, &behavior_tap_dance_runtime_config_##n,     \
+                  POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,                                 \
+                  &behavior_tap_dance_driver_api);                                                  \
+    static const STRUCT_SECTION_ITERABLE(zmk_behavior_ref,                                          \
+                                         behavior_tap_dance_runtime_ref_##n) = {                    \
+        .device = DEVICE_GET(behavior_tap_dance_runtime_##n),                                       \
+        .metadata =                                                                                 \
+            {                                                                                       \
+                .display_name = behavior_tap_dance_runtime_config_##n.studio_runtime_display_name,  \
+            },                                                                                      \
+    };                                                                                              \
+    static STRUCT_SECTION_ITERABLE(zmk_behavior_local_id_map,                                       \
+                                   behavior_tap_dance_runtime_id_##n) = {                           \
+        .device = DEVICE_GET(behavior_tap_dance_runtime_##n),                                       \
+    };                                                                                              \
+    ZMK_STUDIO_RUNTIME_BEHAVIOR_SLOT_DEFINE(behavior_tap_dance_runtime_slot_##n,                    \
+                                            DEVICE_GET(behavior_tap_dance_runtime_##n),             \
+                                            BEHAVIOR_RUNTIME_CONFIG_TYPE_TAP_DANCE,                 \
+                                            &behavior_tap_dance_runtime_config_##n.studio_runtime_active, \
+                                            behavior_tap_dance_runtime_config_##n                   \
+                                                .studio_runtime_display_name,                       \
+                                            ARRAY_SIZE(behavior_tap_dance_runtime_config_##n        \
+                                                           .studio_runtime_display_name));
+
+LISTIFY(ZMK_STUDIO_RUNTIME_TAP_DANCE_SLOTS, STUDIO_RUNTIME_TAP_DANCE_INST, (;), _)
 
 #endif

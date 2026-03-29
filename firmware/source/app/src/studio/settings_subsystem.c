@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include <zephyr/init.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/util.h>
@@ -31,6 +32,7 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #define TRACKPAD_SETTINGS_PATH SETTINGS_SUBTREE "/trackpad"
 #define BACKLIGHT_SETTINGS_PATH SETTINGS_SUBTREE "/backlight"
 #define BLUETOOTH_SETTINGS_PATH SETTINGS_SUBTREE "/bluetooth"
+#define TRACKPAD_SETTINGS_SAVE_DELAY_MS 500
 
 #if defined(CONFIG_BT_CTLR_TX_PWR_DBM)
 #define TX_POWER_BOOST_ENABLED (CONFIG_BT_CTLR_TX_PWR_DBM >= 8)
@@ -45,6 +47,7 @@ struct trackpad_config {
     uint32_t scroll_speed;
     uint32_t polling_interval_ms;
     bool precision_mode_enabled;
+    bool scroll_mode_switch_enabled;
 };
 
 struct backlight_prefs {
@@ -63,6 +66,7 @@ static const struct trackpad_config default_trackpad_cfg = {
     .scroll_speed = 5,
     .polling_interval_ms = 10,
     .precision_mode_enabled = true,
+    .scroll_mode_switch_enabled = true,
 };
 
 static const struct backlight_prefs default_backlight_prefs = {
@@ -86,6 +90,7 @@ static struct trackpad_config trackpad_cfg = {
     .scroll_speed = 5,
     .polling_interval_ms = 10,
     .precision_mode_enabled = true,
+    .scroll_mode_switch_enabled = true,
 };
 
 static struct backlight_prefs backlight_cfg = {
@@ -102,6 +107,8 @@ static struct bluetooth_prefs bluetooth_cfg = {
     },
 };
 
+static struct k_work_delayable trackpad_settings_save_work;
+
 ZMK_RPC_SUBSYSTEM(settings)
 
 #define SETTINGS_RESPONSE(type, ...) ZMK_RPC_RESPONSE(settings, type, __VA_ARGS__)
@@ -111,6 +118,7 @@ static void sanitize_trackpad_config(struct trackpad_config *config) {
     config->sensitivity = CLAMP(config->sensitivity, 1U, 10U);
     config->scroll_speed = CLAMP(config->scroll_speed, 1U, 10U);
     config->polling_interval_ms = CLAMP(config->polling_interval_ms, 1U, 100U);
+    config->scroll_mode_switch_enabled = !!config->scroll_mode_switch_enabled;
 }
 
 static void sanitize_backlight_config(struct backlight_prefs *config) {
@@ -126,12 +134,38 @@ static void sanitize_bluetooth_config(struct bluetooth_prefs *config) {
     }
 }
 
+static int read_settings_blob_with_defaults(settings_read_cb read_cb, void *cb_arg, size_t len,
+                                            void *dest, size_t dest_size,
+                                            const void *defaults) {
+    memcpy(dest, defaults, dest_size);
+
+    size_t read_len = MIN(len, dest_size);
+    int rc = read_cb(cb_arg, dest, read_len);
+    if (rc < 0) {
+        return rc;
+    }
+
+    return 0;
+}
+
 static int save_trackpad_settings(void) {
 #if IS_ENABLED(CONFIG_SETTINGS)
     return settings_save_one(TRACKPAD_SETTINGS_PATH, &trackpad_cfg, sizeof(trackpad_cfg));
 #else
     return 0;
 #endif
+}
+
+static void trackpad_settings_save_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    if (save_trackpad_settings() < 0) {
+        LOG_WRN("Failed to persist trackpad settings");
+    }
+}
+
+static void schedule_trackpad_settings_save(void) {
+    k_work_reschedule(&trackpad_settings_save_work, K_MSEC(TRACKPAD_SETTINGS_SAVE_DELAY_MS));
 }
 
 static int save_backlight_settings(void) {
@@ -158,6 +192,7 @@ static void apply_trackpad_runtime(void) {
     zmk_bbp9981_trackpad_set_scroll_speed(trackpad_cfg.scroll_speed);
     zmk_bbp9981_trackpad_set_poll_interval_ms(trackpad_cfg.polling_interval_ms);
     zmk_bbp9981_trackpad_set_precision_mode_enabled(trackpad_cfg.precision_mode_enabled);
+    zmk_bbp9981_trackpad_set_scroll_mode_switch_enabled(trackpad_cfg.scroll_mode_switch_enabled);
 }
 
 static void apply_backlight_runtime(void) {
@@ -166,6 +201,9 @@ static void apply_backlight_runtime(void) {
     zmk_trackpad_led_set_idle_timeout_ms(backlight_cfg.backlight_auto_off
                                              ? backlight_cfg.idle_timeout_ms
                                              : 0);
+    zmk_rgb_underglow_set_idle_timeout_ms(backlight_cfg.backlight_auto_off
+                                              ? backlight_cfg.idle_timeout_ms
+                                              : 0);
 }
 
 static bool parse_rgb_color(const char *value, uint8_t *r, uint8_t *g, uint8_t *b) {
@@ -218,15 +256,27 @@ static struct zmk_led_hsb rgb_to_hsb(uint8_t red, uint8_t green, uint8_t blue,
 }
 
 static void fill_trackpad_config(zmk_settings_TrackpadConfig *resp) {
+    trackpad_cfg.enabled = zmk_bbp9981_trackpad_get_enabled();
+    trackpad_cfg.sensitivity = zmk_bbp9981_trackpad_get_sensitivity();
+    trackpad_cfg.scroll_inverted = zmk_bbp9981_trackpad_get_scroll_inverted();
+    trackpad_cfg.scroll_speed = zmk_bbp9981_trackpad_get_scroll_speed();
+    trackpad_cfg.polling_interval_ms = zmk_bbp9981_trackpad_get_poll_interval_ms();
+    trackpad_cfg.precision_mode_enabled = zmk_bbp9981_trackpad_get_precision_mode_enabled();
+    trackpad_cfg.scroll_mode_switch_enabled =
+        zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled();
+
     *resp = (zmk_settings_TrackpadConfig)zmk_settings_TrackpadConfig_init_zero;
-    resp->enabled = zmk_bbp9981_trackpad_get_enabled();
-    resp->sensitivity = zmk_bbp9981_trackpad_get_sensitivity();
+    resp->enabled = trackpad_cfg.enabled;
+    resp->sensitivity = trackpad_cfg.sensitivity;
     strncpy(resp->scroll_direction,
-            zmk_bbp9981_trackpad_get_scroll_inverted() ? "inverted" : "normal",
+            trackpad_cfg.scroll_inverted ? "inverted" : "normal",
             sizeof(resp->scroll_direction) - 1);
-    resp->polling_interval_ms = zmk_bbp9981_trackpad_get_poll_interval_ms();
-    resp->scroll_speed = zmk_bbp9981_trackpad_get_scroll_speed();
-    resp->precision_mode_enabled = zmk_bbp9981_trackpad_get_precision_mode_enabled();
+    resp->polling_interval_ms = trackpad_cfg.polling_interval_ms;
+    resp->scroll_speed = trackpad_cfg.scroll_speed;
+    resp->precision_mode_enabled = trackpad_cfg.precision_mode_enabled;
+    strncpy(resp->scroll_mode_switch,
+            trackpad_cfg.scroll_mode_switch_enabled ? "capslock" : "disabled",
+            sizeof(resp->scroll_mode_switch) - 1);
 }
 
 static void fill_backlight_config(zmk_settings_BacklightConfig *resp) {
@@ -294,11 +344,8 @@ static int settings_load_cb(const char *name, size_t len, settings_read_cb read_
     const char *next;
 
     if (settings_name_steq(name, "trackpad", &next) && !next) {
-        if (len != sizeof(trackpad_cfg)) {
-            return -EINVAL;
-        }
-
-        int rc = read_cb(cb_arg, &trackpad_cfg, sizeof(trackpad_cfg));
+        int rc = read_settings_blob_with_defaults(read_cb, cb_arg, len, &trackpad_cfg,
+                                                  sizeof(trackpad_cfg), &default_trackpad_cfg);
         if (rc >= 0) {
             sanitize_trackpad_config(&trackpad_cfg);
         }
@@ -306,11 +353,9 @@ static int settings_load_cb(const char *name, size_t len, settings_read_cb read_
     }
 
     if (settings_name_steq(name, "backlight", &next) && !next) {
-        if (len != sizeof(backlight_cfg)) {
-            return -EINVAL;
-        }
-
-        int rc = read_cb(cb_arg, &backlight_cfg, sizeof(backlight_cfg));
+        int rc = read_settings_blob_with_defaults(read_cb, cb_arg, len, &backlight_cfg,
+                                                  sizeof(backlight_cfg),
+                                                  &default_backlight_prefs);
         if (rc >= 0) {
             sanitize_backlight_config(&backlight_cfg);
         }
@@ -318,11 +363,9 @@ static int settings_load_cb(const char *name, size_t len, settings_read_cb read_
     }
 
     if (settings_name_steq(name, "bluetooth", &next) && !next) {
-        if (len != sizeof(bluetooth_cfg)) {
-            return -EINVAL;
-        }
-
-        int rc = read_cb(cb_arg, &bluetooth_cfg, sizeof(bluetooth_cfg));
+        int rc = read_settings_blob_with_defaults(read_cb, cb_arg, len, &bluetooth_cfg,
+                                                  sizeof(bluetooth_cfg),
+                                                  &default_bluetooth_prefs);
         if (rc >= 0) {
             sanitize_bluetooth_config(&bluetooth_cfg);
         }
@@ -353,17 +396,22 @@ static zmk_studio_Response set_trackpad_config(const zmk_studio_Request *req) {
                                  zmk_settings_SetConfigResponseCode_SET_CONFIG_ERR_OUT_OF_RANGE);
     }
 
+    if (strcmp(config->scroll_mode_switch, "capslock") != 0 &&
+        strcmp(config->scroll_mode_switch, "disabled") != 0) {
+        return SETTINGS_RESPONSE(set_trackpad_config,
+                                 zmk_settings_SetConfigResponseCode_SET_CONFIG_ERR_INVALID);
+    }
+
     trackpad_cfg.enabled = config->enabled;
     trackpad_cfg.sensitivity = config->sensitivity;
     trackpad_cfg.scroll_inverted = strcmp(config->scroll_direction, "inverted") == 0;
     trackpad_cfg.scroll_speed = config->scroll_speed;
     trackpad_cfg.polling_interval_ms = config->polling_interval_ms;
     trackpad_cfg.precision_mode_enabled = config->precision_mode_enabled;
+    trackpad_cfg.scroll_mode_switch_enabled = strcmp(config->scroll_mode_switch, "disabled") != 0;
 
     apply_trackpad_runtime();
-    if (save_trackpad_settings() < 0) {
-        LOG_WRN("Failed to persist trackpad settings");
-    }
+    schedule_trackpad_settings_save();
     emit_trackpad_config_changed();
 
     return SETTINGS_RESPONSE(set_trackpad_config,
@@ -555,11 +603,17 @@ static zmk_studio_Response rename_bt_profile(const zmk_studio_Request *req) {
 
 static zmk_studio_Response save_changes(const zmk_studio_Request *req) {
     (void)req;
+    k_work_cancel_delayable(&trackpad_settings_save_work);
+    if (save_trackpad_settings() < 0) {
+        return SETTINGS_RESPONSE(save_changes,
+                                 zmk_settings_SaveChangesErrorCode_SAVE_CHANGES_ERR_GENERIC);
+    }
     return SETTINGS_RESPONSE(save_changes, zmk_settings_SaveChangesErrorCode_SAVE_CHANGES_OK);
 }
 
 static zmk_studio_Response discard_changes(const zmk_studio_Request *req) {
     (void)req;
+    k_work_cancel_delayable(&trackpad_settings_save_work);
     emit_trackpad_config_changed();
     emit_backlight_config_changed();
     emit_bluetooth_config_changed();
@@ -567,6 +621,7 @@ static zmk_studio_Response discard_changes(const zmk_studio_Request *req) {
 }
 
 static int settings_settings_reset(void) {
+    k_work_cancel_delayable(&trackpad_settings_save_work);
     trackpad_cfg = default_trackpad_cfg;
     backlight_cfg = default_backlight_prefs;
     bluetooth_cfg = default_bluetooth_prefs;
@@ -582,6 +637,7 @@ static int settings_settings_reset(void) {
 }
 
 static int settings_runtime_init(void) {
+    k_work_init_delayable(&trackpad_settings_save_work, trackpad_settings_save_work_handler);
     sanitize_trackpad_config(&trackpad_cfg);
     sanitize_backlight_config(&backlight_cfg);
     sanitize_bluetooth_config(&bluetooth_cfg);

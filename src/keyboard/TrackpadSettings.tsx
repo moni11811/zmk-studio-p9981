@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTrackpadConfig } from "../rpc/useBB9981";
 import type { TrackpadConfig } from "../rpc/bb9981Types";
+import { bb9981Rpc } from "../rpc/bb9981Rpc";
 
 /**
  * BB9981 Trackpad Configuration
@@ -20,16 +21,57 @@ import type { TrackpadConfig } from "../rpc/bb9981Types";
 
 export const TrackpadSettings = () => {
   const { config, loading, updateConfig } = useTrackpadConfig();
+  const [draftScrollSpeed, setDraftScrollSpeed] = useState(5);
+  const [draftPollingIntervalMs, setDraftPollingIntervalMs] = useState("10");
 
   const updateField = useCallback(
-    <K extends keyof TrackpadConfig>(field: K, value: TrackpadConfig[K]) => {
-      if (!config) return;
-      void updateConfig({ ...config, [field]: value }).catch((error) => {
+    async <K extends keyof TrackpadConfig>(
+      field: K,
+      value: TrackpadConfig[K]
+    ) => {
+      const latest =
+        (await bb9981Rpc.settings.getTrackpadConfig().catch(() => config)) ??
+        config;
+      if (!latest) return;
+      await updateConfig({ ...latest, [field]: value }).catch((error) => {
         console.error("Failed to update trackpad config", error);
       });
     },
     [config, updateConfig]
   );
+
+  useEffect(() => {
+    if (!config) return;
+    setDraftScrollSpeed(config.scrollSpeed);
+    setDraftPollingIntervalMs(String(config.pollingIntervalMs));
+  }, [config]);
+
+  const commitScrollSpeed = useCallback(() => {
+    if (!config || draftScrollSpeed === config.scrollSpeed) {
+      return;
+    }
+
+    updateField("scrollSpeed", draftScrollSpeed);
+  }, [config, draftScrollSpeed, updateField]);
+
+  const commitPollingInterval = useCallback(() => {
+    if (!config) {
+      return;
+    }
+
+    const parsed = Number.parseInt(draftPollingIntervalMs, 10);
+    const nextValue = Number.isFinite(parsed)
+      ? Math.min(100, Math.max(1, parsed))
+      : config.pollingIntervalMs;
+
+    setDraftPollingIntervalMs(String(nextValue));
+
+    if (nextValue === config.pollingIntervalMs) {
+      return;
+    }
+
+    updateField("pollingIntervalMs", nextValue);
+  }, [config, draftPollingIntervalMs, updateField]);
 
   if (loading || !config) {
     return (
@@ -84,10 +126,31 @@ export const TrackpadSettings = () => {
       {/* Scroll Settings */}
       <div className="border-t border-gray-200 pt-4">
         <h3 className="font-semibold text-sm mb-3">
-          Scroll Mode (CapsLock ON)
+          Scroll Mode
         </h3>
 
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Scroll Mode Switch</label>
+            <select
+              value={config.scrollModeSwitch}
+              onChange={(e) =>
+                updateField(
+                  "scrollModeSwitch",
+                  e.target.value as "capslock" | "disabled"
+                )
+              }
+              className="h-8 rounded border border-gray-300"
+              disabled={!config.enabled}
+            >
+              <option value="capslock">Caps Lock toggles scroll mode</option>
+              <option value="disabled">Disabled (always pointer mode)</option>
+            </select>
+            <p className="text-xs text-gray-500">
+              Disable the switch here to keep the trackpad in pointer mode.
+            </p>
+          </div>
+
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">Scroll Direction</label>
             <select
@@ -107,23 +170,24 @@ export const TrackpadSettings = () => {
               </option>
             </select>
             <p className="text-xs text-gray-500">
-              Change scroll direction at a320_0x57.c line ~201 (scroll_y to
-              -scroll_y)
+              Applies when scroll mode is active.
             </p>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">
-              Scroll Speed ({config.scrollSpeed})
+              Scroll Speed ({draftScrollSpeed})
             </label>
             <input
               type="range"
               min={1}
               max={10}
-              value={config.scrollSpeed}
-              onChange={(e) =>
-                updateField("scrollSpeed", parseInt(e.target.value))
-              }
+              value={draftScrollSpeed}
+              onChange={(e) => setDraftScrollSpeed(parseInt(e.target.value))}
+              onMouseUp={commitScrollSpeed}
+              onTouchEnd={commitScrollSpeed}
+              onKeyUp={commitScrollSpeed}
+              onBlur={commitScrollSpeed}
               className="w-full"
               disabled={!config.enabled}
             />
@@ -131,6 +195,10 @@ export const TrackpadSettings = () => {
               <span>Slow</span>
               <span>Fast</span>
             </div>
+            <p className="text-xs text-gray-500">
+              Applied when you release the slider. Levels 1-5 keep the stable
+              baseline; 6-10 increase vertical scroll output.
+            </p>
           </div>
         </div>
       </div>
@@ -142,21 +210,27 @@ export const TrackpadSettings = () => {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">
-              Polling Interval ({config.pollingIntervalMs}ms)
+              Polling Interval ({draftPollingIntervalMs || config.pollingIntervalMs}ms)
             </label>
             <input
               type="number"
               min={1}
               max={100}
-              value={config.pollingIntervalMs}
-              onChange={(e) =>
-                updateField("pollingIntervalMs", parseInt(e.target.value) || 10)
-              }
+              value={draftPollingIntervalMs}
+              onChange={(e) => setDraftPollingIntervalMs(e.target.value)}
+              onBlur={commitPollingInterval}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
               className="h-8 rounded border border-gray-300 px-2 w-24"
               disabled={!config.enabled}
             />
             <p className="text-xs text-gray-500">
-              Lower = more responsive, higher = less CPU usage. Default: 10ms
+              Lower = more responsive, higher = less CPU usage. Applied when
+              you leave the field. Scroll mode keeps its stable internal
+              cadence.
             </p>
           </div>
 

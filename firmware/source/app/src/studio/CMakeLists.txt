@@ -6,11 +6,13 @@ zephyr_linker_sources(SECTIONS ../../include/linker/zmk-rpc-subsystem-handlers.l
 zephyr_linker_sources(SECTIONS ../../include/linker/zmk-rpc-subsystem-settings-reset.ld)
 zephyr_linker_sources(SECTIONS ../../include/linker/zmk-rpc-event-mappers.ld)
 zephyr_linker_sources(SECTIONS ../../include/linker/zmk-rpc-transport.ld)
+zephyr_linker_sources(SECTIONS ../../include/linker/zmk-runtime-behavior-slots.ld)
 
 target_sources(app PRIVATE msg_framing.c)
 target_sources(app PRIVATE rpc.c)
 target_sources(app PRIVATE core.c)
 target_sources(app PRIVATE behavior_subsystem.c)
+target_sources(app PRIVATE runtime_behavior_slots.c)
 target_sources(app PRIVATE core_subsystem.c)
 target_sources(app PRIVATE keymap_subsystem.c)
 target_sources(app PRIVATE macro_subsystem.c)

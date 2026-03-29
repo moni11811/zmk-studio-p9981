@@ -83,7 +83,8 @@ export const BacklightSettings = () => {
       <p className="text-sm text-gray-500">
         Live-sync note: every control here maps to active firmware behavior.
         Trackpad lighting uses the ZMK backlight path; keyboard lighting uses
-        the RGB path.
+        the RGB path. Idle auto-off and timeout now apply to both lighting
+        paths together.
       </p>
 
       {/* Trackpad Backlight */}
@@ -137,13 +138,13 @@ export const BacklightSettings = () => {
             }
             disabled={!config.backlightEnabled}
           />
-          Auto-off on idle
+          Auto-off lighting on idle
         </label>
 
         {config.backlightAutoOff && (
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">
-              Idle Timeout ({config.idleTimeoutMs / 1000}s)
+              Lighting Idle Timeout ({config.idleTimeoutMs / 1000}s)
             </label>
             <input
               type="range"
@@ -161,6 +162,9 @@ export const BacklightSettings = () => {
               <span>5s</span>
               <span>5min</span>
             </div>
+            <p className="text-xs text-gray-500">
+              Shared timeout for the trackpad backlight and keyboard lighting.
+            </p>
           </div>
         )}
 
@@ -201,6 +205,11 @@ export const BacklightSettings = () => {
         <div className="rounded bg-gray-50 p-2 text-xs text-gray-500">
           Keyboard backlight color is fixed by BB9981 hardware. Only brightness
           can be adjusted here.
+        </div>
+
+        <div className="rounded bg-gray-50 p-2 text-xs text-gray-500">
+          Keyboard lighting idle timeout uses the shared lighting idle controls
+          above.
         </div>
 
         <div className="p-2 bg-gray-50 rounded text-xs text-gray-500">

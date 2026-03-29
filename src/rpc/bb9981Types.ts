@@ -197,6 +197,31 @@ export enum SetBehaviorRuntimeConfigResponseCode {
   ERR_PERSIST = 6,
 }
 
+export enum CreateBehaviorResponseCode {
+  OK = 0,
+  ERR_INVALID_NAME = 1,
+  ERR_INVALID_CONFIG = 2,
+  ERR_INVALID_BINDING = 3,
+  ERR_NO_SLOT = 4,
+  ERR_PERSIST = 5,
+}
+
+export enum DeleteBehaviorResponseCode {
+  OK = 0,
+  ERR_INVALID_ID = 1,
+  ERR_NOT_USER_DEFINED = 2,
+  ERR_IN_USE = 3,
+  ERR_PERSIST = 4,
+}
+
+export enum RenameBehaviorResponseCode {
+  OK = 0,
+  ERR_INVALID_ID = 1,
+  ERR_NOT_USER_DEFINED = 2,
+  ERR_INVALID_NAME = 3,
+  ERR_PERSIST = 4,
+}
+
 // ============= Settings Types =============
 
 export interface TrackpadConfig {
@@ -206,6 +231,7 @@ export interface TrackpadConfig {
   scrollSpeed: number;
   pollingIntervalMs: number;
   precisionModeEnabled: boolean;
+  scrollModeSwitch: "capslock" | "disabled";
 }
 
 export interface BacklightConfig {

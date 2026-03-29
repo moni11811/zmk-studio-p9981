@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   GetBehaviorDetailsResponse,
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
+import { BehaviorParametersPicker } from "./BehaviorParametersPicker";
 
 export enum MacroStepType {
   TAP = "tap",
@@ -46,6 +47,7 @@ const STEP_TYPE_LABELS: Record<MacroStepType, string> = {
 export const MacroEditor = ({
   macro: initialMacro,
   behaviors,
+  layers,
   onSave,
   onCancel,
 }: MacroEditorProps) => {
@@ -133,6 +135,16 @@ export const MacroEditor = ({
         return "Pause for Release";
     }
   };
+
+  const selectedBehavior =
+    selectedStep !== null &&
+    [
+      MacroStepType.TAP,
+      MacroStepType.PRESS,
+      MacroStepType.RELEASE,
+    ].includes(macro.steps[selectedStep]?.type)
+      ? behaviors.find((b) => b.id === macro.steps[selectedStep]?.behaviorId)
+      : undefined;
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-2xl">
@@ -299,6 +311,8 @@ export const MacroEditor = ({
                       behaviorId: e.target.value
                         ? parseInt(e.target.value)
                         : undefined,
+                      param1: undefined,
+                      param2: undefined,
                     })
                   }
                   className="h-8 rounded border border-gray-300 text-sm"
@@ -311,6 +325,25 @@ export const MacroEditor = ({
                   ))}
                 </select>
               </div>
+            )}
+
+            {selectedBehavior && selectedBehavior.metadata.length > 0 && (
+              <BehaviorParametersPicker
+                metadata={selectedBehavior.metadata}
+                param1={macro.steps[selectedStep].param1}
+                param2={macro.steps[selectedStep].param2}
+                layers={layers}
+                title="Behavior Parameters"
+                onParam1Changed={(param1) =>
+                  updateStep(selectedStep, {
+                    param1,
+                    param2: undefined,
+                  })
+                }
+                onParam2Changed={(param2) =>
+                  updateStep(selectedStep, { param2 })
+                }
+              />
             )}
 
             {/* Duration for wait steps */}

@@ -18,10 +18,13 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/behavior.h>
+#include <zmk/studio/runtime_behaviors.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
+#define ZMK_STUDIO_RUNTIME_HOLD_TAP_SLOTS 8
 
 #define ZMK_BHV_HOLD_TAP_MAX_HELD CONFIG_ZMK_BEHAVIOR_HOLD_TAP_MAX_HELD
 #define ZMK_BHV_HOLD_TAP_MAX_CAPTURED_EVENTS CONFIG_ZMK_BEHAVIOR_HOLD_TAP_MAX_CAPTURED_EVENTS
@@ -56,6 +59,9 @@ struct behavior_hold_tap_config {
     bool hold_while_undecided_linger;
     bool retro_tap;
     bool hold_trigger_on_release;
+    bool studio_runtime_slot;
+    bool studio_runtime_active;
+    char studio_runtime_display_name[32];
     int32_t hold_trigger_key_positions_len;
     int32_t hold_trigger_key_positions[];
 };
@@ -121,6 +127,10 @@ struct last_tapped {
 // Set time stamp to large negative number initially for test suites, but not
 // int64 min since it will overflow if -1 is added
 struct last_tapped last_tapped = {INT32_MIN, INT32_MIN};
+
+static bool hold_tap_config_is_active(const struct behavior_hold_tap_config *cfg) {
+    return !cfg->studio_runtime_slot || cfg->studio_runtime_active;
+}
 
 static void store_last_tapped(int64_t timestamp) {
     if (timestamp > last_tapped.timestamp) {
@@ -601,6 +611,10 @@ static int on_hold_tap_binding_pressed(struct zmk_behavior_binding *binding,
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_hold_tap_config *cfg = dev->config;
 
+    if (!hold_tap_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     if (undecided_hold_tap != NULL) {
         LOG_DBG("ERROR another hold-tap behavior is undecided.");
         // if this happens, make sure the behavior events occur AFTER other position events.
@@ -636,6 +650,7 @@ static int on_hold_tap_binding_pressed(struct zmk_behavior_binding *binding,
 static int on_hold_tap_binding_released(struct zmk_behavior_binding *binding,
                                         struct zmk_behavior_binding_event event) {
     struct active_hold_tap *hold_tap = find_hold_tap(event.position);
+
     if (hold_tap == NULL) {
         LOG_ERR("ACTIVE_HOLD_TAP_CLEANED_UP_TOO_EARLY");
         return ZMK_BEHAVIOR_OPAQUE;
@@ -677,6 +692,10 @@ static int hold_tap_parameter_metadata(const struct device *hold_tap,
     int err;
     struct behavior_parameter_metadata child_meta;
 
+    if (!hold_tap_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     err = behavior_get_parameter_metadata(zmk_behavior_get_binding(cfg->hold_behavior_dev),
                                           &child_meta);
     if (err < 0) {
@@ -713,6 +732,10 @@ static int get_hold_tap_runtime_config(const struct device *dev,
                                        struct behavior_runtime_config *config) {
     const struct behavior_hold_tap_config *cfg = dev->config;
 
+    if (!hold_tap_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     *config = (struct behavior_runtime_config){
         .type = BEHAVIOR_RUNTIME_CONFIG_TYPE_HOLD_TAP,
         .data.hold_tap =
@@ -731,12 +754,17 @@ static int get_hold_tap_runtime_config(const struct device *dev,
 
 static int set_hold_tap_runtime_config(const struct device *dev,
                                        const struct behavior_runtime_config *config) {
+    struct behavior_hold_tap_config *cfg = (struct behavior_hold_tap_config *)dev->config;
+
+    if (!hold_tap_config_is_active(cfg)) {
+        return -ENODEV;
+    }
+
     if (config->type != BEHAVIOR_RUNTIME_CONFIG_TYPE_HOLD_TAP) {
         return -EINVAL;
     }
 
     const struct behavior_hold_tap_runtime_config *runtime = &config->data.hold_tap;
-    struct behavior_hold_tap_config *cfg = (struct behavior_hold_tap_config *)dev->config;
 
     if (!runtime->hold_behavior_dev || !runtime->tap_behavior_dev || runtime->tapping_term_ms == 0 ||
         runtime->quick_tap_ms < -1 || runtime->require_prior_idle_ms < -1 ||
@@ -930,5 +958,43 @@ static int behavior_hold_tap_init(const struct device *dev) {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_hold_tap_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KP_INST)
+
+#define STUDIO_RUNTIME_HOLD_TAP_INST(n, _)                                                         \
+    static struct behavior_hold_tap_config behavior_hold_tap_runtime_config_##n = {                \
+        .tapping_term_ms = 200,                                                                    \
+        .hold_behavior_dev = "key_press",                                                          \
+        .tap_behavior_dev = "key_press",                                                           \
+        .quick_tap_ms = -1,                                                                        \
+        .require_prior_idle_ms = -1,                                                               \
+        .flavor = BEHAVIOR_HOLD_TAP_FLAVOR_BALANCED,                                               \
+        .studio_runtime_slot = true,                                                               \
+    };                                                                                             \
+    static struct behavior_hold_tap_data behavior_hold_tap_runtime_data_##n = {};                 \
+    DEVICE_DEFINE(behavior_hold_tap_runtime_##n, "studio_runtime_hold_tap_" STRINGIFY(n),         \
+                  behavior_hold_tap_init, NULL, &behavior_hold_tap_runtime_data_##n,              \
+                  &behavior_hold_tap_runtime_config_##n, POST_KERNEL,                             \
+                  CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_hold_tap_driver_api);            \
+    static const STRUCT_SECTION_ITERABLE(zmk_behavior_ref,                                         \
+                                         behavior_hold_tap_runtime_ref_##n) = {                    \
+        .device = DEVICE_GET(behavior_hold_tap_runtime_##n),                                       \
+        .metadata =                                                                                \
+            {                                                                                      \
+                .display_name = behavior_hold_tap_runtime_config_##n.studio_runtime_display_name,  \
+            },                                                                                     \
+    };                                                                                             \
+    static STRUCT_SECTION_ITERABLE(zmk_behavior_local_id_map,                                      \
+                                   behavior_hold_tap_runtime_id_##n) = {                           \
+        .device = DEVICE_GET(behavior_hold_tap_runtime_##n),                                       \
+    };                                                                                             \
+    ZMK_STUDIO_RUNTIME_BEHAVIOR_SLOT_DEFINE(behavior_hold_tap_runtime_slot_##n,                    \
+                                            DEVICE_GET(behavior_hold_tap_runtime_##n),             \
+                                            BEHAVIOR_RUNTIME_CONFIG_TYPE_HOLD_TAP,                 \
+                                            &behavior_hold_tap_runtime_config_##n.studio_runtime_active, \
+                                            behavior_hold_tap_runtime_config_##n                   \
+                                                .studio_runtime_display_name,                      \
+                                            ARRAY_SIZE(behavior_hold_tap_runtime_config_##n        \
+                                                           .studio_runtime_display_name));
+
+LISTIFY(ZMK_STUDIO_RUNTIME_HOLD_TAP_SLOTS, STUDIO_RUNTIME_HOLD_TAP_INST, (;), _)
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

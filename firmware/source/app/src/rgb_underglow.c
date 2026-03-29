@@ -23,8 +23,14 @@
 #include <zmk/usb.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
+#include <zmk/events/position_state_changed.h>
+#include <zmk/events/sensor_event.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/workqueue.h>
+
+#if IS_ENABLED(CONFIG_ZMK_POINTING)
+#include <zephyr/input/input.h>
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -65,6 +71,12 @@ static const struct device *led_strip;
 static struct led_rgb pixels[STRIP_NUM_PIXELS];
 
 static struct rgb_underglow_state state;
+static bool preferred_on = IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_ON_START);
+static uint32_t runtime_idle_timeout_ms;
+static bool runtime_idle_suspended;
+static struct k_work_delayable underglow_idle_work;
+
+int zmk_rgb_underglow_save_state(void);
 
 #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
 static const struct device *const ext_power = DEVICE_DT_GET(DT_INST(0, zmk_ext_power_generic));
@@ -221,6 +233,7 @@ static int rgb_settings_set(const char *name, size_t len, settings_read_cb read_
 
         rc = read_cb(cb_arg, &state, sizeof(state));
         if (rc >= 0) {
+            preferred_on = state.on;
             if (state.on) {
                 k_timer_start(&underglow_tick, K_NO_WAIT, K_MSEC(50));
             }
@@ -243,6 +256,80 @@ static void zmk_rgb_underglow_save_state_work(struct k_work *_work) {
 static struct k_work_delayable underglow_save_work;
 #endif
 
+static void schedule_runtime_idle_timeout(void) {
+    if (runtime_idle_timeout_ms == 0 || !preferred_on) {
+        k_work_cancel_delayable(&underglow_idle_work);
+        return;
+    }
+
+    k_work_reschedule(&underglow_idle_work, K_MSEC(runtime_idle_timeout_ms));
+}
+
+static int zmk_rgb_underglow_apply_power_state(bool on, bool persist) {
+    if (!led_strip) {
+        return -ENODEV;
+    }
+
+    if (on) {
+#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
+        if (ext_power != NULL) {
+            int rc = ext_power_enable(ext_power);
+            if (rc != 0) {
+                LOG_ERR("Unable to enable EXT_POWER: %d", rc);
+            }
+        }
+#endif
+
+        state.on = true;
+        state.animation_step = 0;
+        k_timer_start(&underglow_tick, K_NO_WAIT, K_MSEC(50));
+        zmk_rgb_underglow_tick(NULL);
+    } else {
+#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
+        if (ext_power != NULL) {
+            int rc = ext_power_disable(ext_power);
+            if (rc != 0) {
+                LOG_ERR("Unable to disable EXT_POWER: %d", rc);
+            }
+        }
+#endif
+
+        for (int i = 0; i < STRIP_NUM_PIXELS; i++) {
+            pixels[i] = (struct led_rgb){r : 0, g : 0, b : 0};
+        }
+
+        led_strip_update_rgb(led_strip, pixels, STRIP_NUM_PIXELS);
+        k_timer_stop(&underglow_tick);
+        state.on = false;
+    }
+
+    return persist ? zmk_rgb_underglow_save_state() : 0;
+}
+
+static void note_runtime_activity(void) {
+    if (runtime_idle_timeout_ms == 0 || !preferred_on) {
+        return;
+    }
+
+    if (runtime_idle_suspended) {
+        runtime_idle_suspended = false;
+        (void)zmk_rgb_underglow_apply_power_state(true, false);
+    }
+
+    schedule_runtime_idle_timeout();
+}
+
+static void underglow_idle_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    if (runtime_idle_timeout_ms == 0 || !preferred_on || !state.on) {
+        return;
+    }
+
+    runtime_idle_suspended = true;
+    (void)zmk_rgb_underglow_apply_power_state(false, false);
+}
+
 static int zmk_rgb_underglow_init(void) {
     led_strip = DEVICE_DT_GET(STRIP_CHOSEN);
 
@@ -264,10 +351,14 @@ static int zmk_rgb_underglow_init(void) {
         animation_step : 0,
         on : IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_ON_START)
     };
+    preferred_on = state.on;
+    runtime_idle_suspended = false;
+    runtime_idle_timeout_ms = 0;
 
 #if IS_ENABLED(CONFIG_SETTINGS)
     k_work_init_delayable(&underglow_save_work, zmk_rgb_underglow_save_state_work);
 #endif
+    k_work_init_delayable(&underglow_idle_work, underglow_idle_work_handler);
 
 #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_USB)
     state.on = zmk_usb_is_powered();
@@ -298,23 +389,10 @@ int zmk_rgb_underglow_get_state(bool *on_off) {
 }
 
 int zmk_rgb_underglow_on(void) {
-    if (!led_strip)
-        return -ENODEV;
-
-#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
-    if (ext_power != NULL) {
-        int rc = ext_power_enable(ext_power);
-        if (rc != 0) {
-            LOG_ERR("Unable to enable EXT_POWER: %d", rc);
-        }
-    }
-#endif
-
-    state.on = true;
-    state.animation_step = 0;
-    k_timer_start(&underglow_tick, K_NO_WAIT, K_MSEC(50));
-
-    return zmk_rgb_underglow_save_state();
+    preferred_on = true;
+    runtime_idle_suspended = false;
+    schedule_runtime_idle_timeout();
+    return zmk_rgb_underglow_apply_power_state(true, true);
 }
 
 static void zmk_rgb_underglow_off_handler(struct k_work *work) {
@@ -328,24 +406,10 @@ static void zmk_rgb_underglow_off_handler(struct k_work *work) {
 K_WORK_DEFINE(underglow_off_work, zmk_rgb_underglow_off_handler);
 
 int zmk_rgb_underglow_off(void) {
-    if (!led_strip)
-        return -ENODEV;
-
-#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_EXT_POWER)
-    if (ext_power != NULL) {
-        int rc = ext_power_disable(ext_power);
-        if (rc != 0) {
-            LOG_ERR("Unable to disable EXT_POWER: %d", rc);
-        }
-    }
-#endif
-
-    k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &underglow_off_work);
-
-    k_timer_stop(&underglow_tick);
-    state.on = false;
-
-    return zmk_rgb_underglow_save_state();
+    preferred_on = false;
+    runtime_idle_suspended = false;
+    k_work_cancel_delayable(&underglow_idle_work);
+    return zmk_rgb_underglow_apply_power_state(false, true);
 }
 
 int zmk_rgb_underglow_calc_effect(int direction) {
@@ -465,6 +529,49 @@ int zmk_rgb_underglow_change_spd(int direction) {
 
     return zmk_rgb_underglow_save_state();
 }
+
+void zmk_rgb_underglow_set_idle_timeout_ms(uint32_t timeout_ms) {
+    runtime_idle_timeout_ms = timeout_ms;
+    runtime_idle_suspended = false;
+
+    if (runtime_idle_timeout_ms == 0) {
+        k_work_cancel_delayable(&underglow_idle_work);
+        if (preferred_on && !state.on) {
+            (void)zmk_rgb_underglow_apply_power_state(true, false);
+        }
+        return;
+    }
+
+    schedule_runtime_idle_timeout();
+}
+
+uint32_t zmk_rgb_underglow_get_idle_timeout_ms(void) { return runtime_idle_timeout_ms; }
+
+static int rgb_underglow_runtime_activity_listener(const zmk_event_t *eh) {
+    ARG_UNUSED(eh);
+    note_runtime_activity();
+    return 0;
+}
+
+ZMK_LISTENER(rgb_underglow_runtime_activity, rgb_underglow_runtime_activity_listener);
+ZMK_SUBSCRIPTION(rgb_underglow_runtime_activity, zmk_position_state_changed);
+ZMK_SUBSCRIPTION(rgb_underglow_runtime_activity, zmk_sensor_event);
+
+#if IS_ENABLED(CONFIG_ZMK_POINTING)
+
+static void rgb_underglow_note_activity_work_cb(struct k_work *_work) { note_runtime_activity(); }
+
+K_WORK_DEFINE(rgb_underglow_note_activity_work, rgb_underglow_note_activity_work_cb);
+
+static void rgb_underglow_input_listener(struct input_event *ev, void *user_data) {
+    ARG_UNUSED(ev);
+    ARG_UNUSED(user_data);
+    k_work_submit(&rgb_underglow_note_activity_work);
+}
+
+INPUT_CALLBACK_DEFINE(NULL, rgb_underglow_input_listener, NULL);
+
+#endif
 
 #if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) ||                                          \
     IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_USB)
