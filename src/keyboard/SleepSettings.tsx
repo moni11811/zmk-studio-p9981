@@ -3,7 +3,7 @@ import { useSleepConfig } from "../rpc/useBB9981";
 import type { SleepConfig } from "../rpc/bb9981Types";
 
 export const SleepSettings = () => {
-  const { config, loading, updateConfig } = useSleepConfig();
+  const { config, loading, error, refresh, updateConfig } = useSleepConfig();
 
   const updateField = useCallback(
     <K extends keyof SleepConfig>(field: K, value: SleepConfig[K]) => {
@@ -15,10 +15,53 @@ export const SleepSettings = () => {
     [config, updateConfig]
   );
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-8 text-gray-500">
         Loading sleep settings...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-lg font-bold text-amber-900">Sleep Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            The app could not load sleep settings from the keyboard.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{error}</p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-gray-200 bg-gray-50 p-4">
+          <h2 className="text-lg font-bold text-gray-900">Sleep Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            The keyboard did not return sleep settings for this session.
+          </p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-100"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

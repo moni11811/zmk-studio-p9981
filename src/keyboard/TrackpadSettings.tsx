@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTrackpadConfig } from "../rpc/useBB9981";
 import type { TrackpadConfig } from "../rpc/bb9981Types";
-import { bb9981Rpc } from "../rpc/bb9981Rpc";
 
 /**
  * BB9981 Trackpad Configuration
@@ -21,7 +20,8 @@ import { bb9981Rpc } from "../rpc/bb9981Rpc";
  */
 
 export const TrackpadSettings = () => {
-  const { config, loading, updateConfig } = useTrackpadConfig();
+  const { config, loading, error, refresh, updateConfig } = useTrackpadConfig();
+  const [draftSensitivity, setDraftSensitivity] = useState(5);
   const [draftScrollSpeed, setDraftScrollSpeed] = useState(5);
   const [draftPollingIntervalMs, setDraftPollingIntervalMs] = useState("10");
 
@@ -30,22 +30,30 @@ export const TrackpadSettings = () => {
       field: K,
       value: TrackpadConfig[K]
     ) => {
-      const latest =
-        (await bb9981Rpc.settings.getTrackpadConfig().catch(() => config)) ??
-        config;
-      if (!latest) return;
-      await updateConfig({ ...latest, [field]: value }).catch((error) => {
-        console.error("Failed to update trackpad config", error);
-      });
+      if (!config) return;
+      await updateConfig((current) => ({ ...current, [field]: value })).catch(
+        (error) => {
+          console.error("Failed to update trackpad config", error);
+        }
+      );
     },
     [config, updateConfig]
   );
 
   useEffect(() => {
     if (!config) return;
+    setDraftSensitivity(config.sensitivity);
     setDraftScrollSpeed(config.scrollSpeed);
     setDraftPollingIntervalMs(String(config.pollingIntervalMs));
   }, [config]);
+
+  const commitSensitivity = useCallback(() => {
+    if (!config || draftSensitivity === config.sensitivity) {
+      return;
+    }
+
+    updateField("sensitivity", draftSensitivity);
+  }, [config, draftSensitivity, updateField]);
 
   const commitScrollSpeed = useCallback(() => {
     if (!config || draftScrollSpeed === config.scrollSpeed) {
@@ -74,10 +82,53 @@ export const TrackpadSettings = () => {
     updateField("pollingIntervalMs", nextValue);
   }, [config, draftPollingIntervalMs, updateField]);
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-8 text-gray-500">
         Loading trackpad settings...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-lg font-bold text-amber-900">Trackpad Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            The app could not load trackpad settings from the keyboard.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{error}</p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-gray-200 bg-gray-50 p-4">
+          <h2 className="text-lg font-bold text-gray-900">Trackpad Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            The keyboard did not return trackpad settings for this session.
+          </p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-100"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -103,14 +154,18 @@ export const TrackpadSettings = () => {
       {/* Sensitivity / DPI */}
       <div className="flex flex-col gap-1">
         <label className="text-sm font-medium">
-          Sensitivity / DPI ({config.sensitivity})
+          Sensitivity / DPI ({draftSensitivity})
         </label>
         <input
           type="range"
           min={1}
           max={10}
-          value={config.sensitivity}
-          onChange={(e) => updateField("sensitivity", parseInt(e.target.value))}
+          value={draftSensitivity}
+          onChange={(e) => setDraftSensitivity(parseInt(e.target.value))}
+          onMouseUp={commitSensitivity}
+          onTouchEnd={commitSensitivity}
+          onKeyUp={commitSensitivity}
+          onBlur={commitSensitivity}
           className="w-full"
           disabled={!config.enabled}
         />

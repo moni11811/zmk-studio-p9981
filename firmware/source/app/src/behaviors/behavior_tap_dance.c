@@ -272,9 +272,11 @@ static int set_tap_dance_runtime_config(const struct device *dev,
     }
 
     const struct behavior_tap_dance_runtime_config *runtime = &config->data.tap_dance;
+    const size_t max_binding_count =
+        cfg->studio_runtime_slot ? ZMK_BEHAVIOR_RUNTIME_CONFIG_MAX_BINDINGS : cfg->behavior_count;
 
     if (runtime->tapping_term_ms == 0 || runtime->binding_count == 0 ||
-        runtime->binding_count > cfg->behavior_count ||
+        runtime->binding_count > max_binding_count ||
         runtime->binding_count > ZMK_BEHAVIOR_RUNTIME_CONFIG_MAX_BINDINGS) {
         return -EINVAL;
     }

@@ -2,6 +2,14 @@ const STORAGE_KEY = "bb9981BehaviorDisplayNameOverrides";
 
 type BehaviorDisplayNameOverrides = Record<number, string>;
 
+const DEFAULT_BEHAVIOR_DISPLAY_NAME_OVERRIDES: BehaviorDisplayNameOverrides = {
+  1: "Mouse",
+  3: "Scroll Function (legacy leftover keymapping)",
+  15: "On/Off TrackPad",
+  17: "Empty (Null) - No Action",
+  19: "Soft Restart",
+};
+
 function getStorage(): Storage | null {
   try {
     return globalThis.localStorage ?? null;
@@ -32,7 +40,10 @@ function parseOverrides(raw: string | null): BehaviorDisplayNameOverrides {
 
 export function readBehaviorDisplayNameOverrides(): BehaviorDisplayNameOverrides {
   const storage = getStorage();
-  return storage ? parseOverrides(storage.getItem(STORAGE_KEY)) : {};
+  return {
+    ...DEFAULT_BEHAVIOR_DISPLAY_NAME_OVERRIDES,
+    ...(storage ? parseOverrides(storage.getItem(STORAGE_KEY)) : {}),
+  };
 }
 
 function writeOverrides(overrides: BehaviorDisplayNameOverrides) {

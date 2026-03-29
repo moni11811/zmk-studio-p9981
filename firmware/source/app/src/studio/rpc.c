@@ -19,8 +19,10 @@ LOG_MODULE_REGISTER(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
+#include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/studio/core.h>
 #include <zmk/studio/rpc.h>
+#include <zmk/usb.h>
 
 ZMK_EVENT_IMPL(zmk_studio_rpc_notification);
 
@@ -93,6 +95,36 @@ static struct zmk_rpc_transport *find_transport(enum zmk_transport transport) {
     }
 
     return NULL;
+}
+
+static bool transport_start_allowed(const struct zmk_rpc_transport *transport) {
+    switch (transport->transport) {
+    case ZMK_TRANSPORT_USB:
+        return zmk_usb_is_hid_ready();
+    default:
+        return true;
+    }
+}
+
+static void set_transport_rx_state(enum zmk_transport transport, bool enabled) {
+    struct zmk_rpc_transport *transport_impl = find_transport(transport);
+    int err = 0;
+
+    if (!transport_impl) {
+        return;
+    }
+
+    if (enabled) {
+        if (transport_impl->rx_start) {
+            err = transport_impl->rx_start();
+        }
+    } else if (transport_impl->rx_stop) {
+        err = transport_impl->rx_stop();
+    }
+
+    if (err < 0) {
+        LOG_WRN("Failed to %s RPC transport %d (%d)", enabled ? "start" : "stop", transport, err);
+    }
 }
 
 void zmk_rpc_select_transport(enum zmk_transport transport) {
@@ -287,20 +319,23 @@ static void start_all_transports(void) {
     enum zmk_transport endpoint_transport = zmk_endpoint_get_selected().transport;
 
     STRUCT_SECTION_FOREACH(zmk_rpc_transport, t) {
-        if (t->rx_start) {
-            int err = t->rx_start();
-            if (err < 0) {
-                LOG_WRN("Failed to start RPC transport %d (%d)", t->transport, err);
-            }
+        bool can_start = transport_start_allowed(t);
+
+        if (can_start && t->rx_start) {
+            set_transport_rx_state(t->transport, true);
         }
 
-        if (!default_transport) {
+        if (can_start && !default_transport) {
             default_transport = t;
         }
 
-        if (t->transport == endpoint_transport) {
+        if (can_start && t->transport == endpoint_transport) {
             default_transport = t;
         }
+    }
+
+    if (!default_transport) {
+        default_transport = find_transport(endpoint_transport);
     }
 
     selected_transport = default_transport;
@@ -341,6 +376,21 @@ static int zmk_rpc_init(void) {
 }
 
 SYS_INIT(zmk_rpc_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
+static int studio_rpc_usb_listener(const zmk_event_t *eh) {
+    if (!as_zmk_usb_conn_state_changed(eh)) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    k_mutex_lock(&rpc_transport_mutex, K_FOREVER);
+    set_transport_rx_state(ZMK_TRANSPORT_USB, zmk_usb_is_hid_ready());
+    k_mutex_unlock(&rpc_transport_mutex);
+
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(studio_rpc_usb_listener, studio_rpc_usb_listener);
+ZMK_SUBSCRIPTION(studio_rpc_usb_listener, zmk_usb_conn_state_changed);
 
 static int studio_rpc_listener_cb(const zmk_event_t *eh) {
     struct zmk_endpoint_changed *ep_changed = as_zmk_endpoint_changed(eh);

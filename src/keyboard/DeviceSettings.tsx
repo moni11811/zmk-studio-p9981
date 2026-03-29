@@ -1,12 +1,4 @@
-import { useState } from "react";
-import { TrackpadSettings } from "./TrackpadSettings";
-import { BacklightSettings } from "./BacklightSettings";
-import { BluetoothSettings } from "./BluetoothSettings";
-import { SleepSettings } from "./SleepSettings";
-import { PowerSettings } from "./PowerSettings";
-import { BehaviorControl } from "./BehaviorControl";
-import { MacroList } from "./MacroList";
-import { ComboList } from "./ComboList";
+import React, { Suspense, lazy, useState } from "react";
 import type { GetBehaviorDetailsResponse } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 
 /**
@@ -37,6 +29,91 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: "combos", label: "Combos" },
 ];
 
+const TrackpadSettings = lazy(() =>
+  import("./TrackpadSettings").then((module) => ({
+    default: module.TrackpadSettings,
+  }))
+);
+const BacklightSettings = lazy(() =>
+  import("./BacklightSettings").then((module) => ({
+    default: module.BacklightSettings,
+  }))
+);
+const BluetoothSettings = lazy(() =>
+  import("./BluetoothSettings").then((module) => ({
+    default: module.BluetoothSettings,
+  }))
+);
+const SleepSettings = lazy(() =>
+  import("./SleepSettings").then((module) => ({
+    default: module.SleepSettings,
+  }))
+);
+const PowerSettings = lazy(() =>
+  import("./PowerSettings").then((module) => ({
+    default: module.PowerSettings,
+  }))
+);
+const BehaviorControl = lazy(() =>
+  import("./BehaviorControl").then((module) => ({
+    default: module.BehaviorControl,
+  }))
+);
+const MacroList = lazy(() =>
+  import("./MacroList").then((module) => ({
+    default: module.MacroList,
+  }))
+);
+const ComboList = lazy(() =>
+  import("./ComboList").then((module) => ({
+    default: module.ComboList,
+  }))
+);
+
+class SettingsTabErrorBoundary extends React.Component<
+  { children: React.ReactNode; tabLabel: string },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; tabLabel: string }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error(`Failed to render ${this.props.tabLabel} tab`, error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4">
+          <div className="rounded border border-red-200 bg-red-50 p-4">
+            <h2 className="text-lg font-bold text-red-900">
+              {this.props.tabLabel} Tab Failed to Load
+            </h2>
+            <p className="mt-2 text-sm text-red-800">
+              This tab hit a render error. Switch tabs and come back, or reopen
+              the app after reconnecting the keyboard.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const SettingsTabLoading = ({ label }: { label: string }) => (
+  <div className="flex items-center justify-center p-8 text-gray-500">
+    Loading {label.toLowerCase()}...
+  </div>
+);
+
 interface DeviceSettingsProps {
   behaviors: GetBehaviorDetailsResponse[];
   layers: { id: number; name: string }[];
@@ -49,6 +126,35 @@ export const DeviceSettings = ({
   totalKeys,
 }: DeviceSettingsProps) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>("trackpad");
+  const activeTabLabel =
+    TABS.find((tab) => tab.id === activeTab)?.label ?? "Settings";
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case "trackpad":
+        return <TrackpadSettings />;
+      case "backlight":
+        return <BacklightSettings />;
+      case "sleep":
+        return <SleepSettings />;
+      case "power":
+        return <PowerSettings />;
+      case "bluetooth":
+        return <BluetoothSettings />;
+      case "behaviors":
+        return <BehaviorControl behaviors={behaviors} layers={layers} />;
+      case "macros":
+        return <MacroList behaviors={behaviors} layers={layers} />;
+      case "combos":
+        return (
+          <ComboList
+            behaviors={behaviors}
+            layers={layers}
+            totalKeys={totalKeys}
+          />
+        );
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -71,20 +177,11 @@ export const DeviceSettings = ({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
-        {activeTab === "trackpad" && <TrackpadSettings />}
-        {activeTab === "backlight" && <BacklightSettings />}
-        {activeTab === "sleep" && <SleepSettings />}
-        {activeTab === "power" && <PowerSettings />}
-        {activeTab === "bluetooth" && <BluetoothSettings />}
-        {activeTab === "behaviors" && (
-          <BehaviorControl behaviors={behaviors} layers={layers} />
-        )}
-        {activeTab === "macros" && (
-          <MacroList behaviors={behaviors} layers={layers} />
-        )}
-        {activeTab === "combos" && (
-          <ComboList behaviors={behaviors} layers={layers} totalKeys={totalKeys} />
-        )}
+        <SettingsTabErrorBoundary key={activeTab} tabLabel={activeTabLabel}>
+          <Suspense fallback={<SettingsTabLoading label={activeTabLabel} />}>
+            {renderActiveTab()}
+          </Suspense>
+        </SettingsTabErrorBoundary>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@
 
 #include <zephyr/logging/log.h>
 #include <zmk/studio/rpc.h>
+#include <zmk/usb.h>
 
 LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 
@@ -19,9 +20,14 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #define UART_DEVICE_NODE DT_CHOSEN(zmk_studio_rpc_uart)
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+static bool uart_rx_started;
 
 static void tx_notify(struct ring_buf *tx_ring_buf, size_t written, bool msg_done,
                       void *user_data) {
+    if (!zmk_usb_is_hid_ready()) {
+        return;
+    }
+
     if (msg_done || (ring_buf_size_get(tx_ring_buf) > (ring_buf_capacity_get(tx_ring_buf) / 2))) {
 #if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
         uart_irq_tx_enable(uart_dev);
@@ -71,20 +77,30 @@ K_THREAD_DEFINE(uart_transport_read_thread, CONFIG_ZMK_STUDIO_TRANSPORT_UART_RX_
 #endif
 
 static int start_rx() {
+    if (uart_rx_started || !zmk_usb_is_hid_ready()) {
+        return 0;
+    }
+
 #if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
     uart_irq_rx_enable(uart_dev);
 #else
     k_thread_resume(uart_transport_read_thread);
 #endif
+    uart_rx_started = true;
     return 0;
 }
 
 static int stop_rx(void) {
+    if (!uart_rx_started) {
+        return 0;
+    }
+
 #if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
     uart_irq_rx_disable(uart_dev);
 #else
     k_thread_suspend(uart_transport_read_thread);
 #endif
+    uart_rx_started = false;
     return 0;
 }
 

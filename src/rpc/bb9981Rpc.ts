@@ -242,6 +242,7 @@ function mapBehaviorDetails(details: any): any {
   return {
     ...details,
     id,
+    rawDisplayName: details.displayName ?? "",
     displayName: displayNameOverride ?? details.displayName ?? "",
   };
 }

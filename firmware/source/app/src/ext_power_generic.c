@@ -25,6 +25,7 @@ struct ext_power_generic_config {
     const struct gpio_dt_spec *control;
     const size_t control_gpios_count;
     const uint16_t init_delay_ms;
+    const bool boot_on;
 };
 
 struct ext_power_generic_data {
@@ -83,7 +84,12 @@ static int ext_power_generic_disable(const struct device *dev) {
         }
     }
     data->status = false;
-    return ext_power_save_state();
+    /*
+     * On BBP9981 this rail is required for a healthy battery boot path.
+     * Allow temporarily disabling it while USB is present, but do not persist
+     * the disabled state across reboot.
+     */
+    return 0;
 }
 
 static int ext_power_generic_get(const struct device *dev) {
@@ -107,8 +113,8 @@ static int ext_power_settings_set_status(const struct device *dev, size_t len,
             LOG_WRN("Ignoring persisted disabled ext-power state at boot");
             data->status = true;
         }
-
-        return ext_power_generic_enable(dev);
+        ext_power_generic_enable(dev);
+        return 0;
     }
     return rc;
 }
@@ -147,15 +153,12 @@ SETTINGS_STATIC_HANDLER_DEFINE(ext_power, "ext_power/state", NULL, ext_power_set
 
 static int ext_power_generic_init(const struct device *dev) {
     const struct ext_power_generic_config *config = dev->config;
+    struct ext_power_generic_data *data = dev->data;
 
     for (int i = 0; i < config->control_gpios_count; i++) {
         const struct gpio_dt_spec *gpio = &config->control[i];
-        /*
-         * Bring the rail up in its logical "on" state immediately so active-low
-         * power-enable pins do not briefly drop the board's battery rail during
-         * startup before ext_power_enable() runs.
-         */
-        if (gpio_pin_configure_dt(gpio, GPIO_OUTPUT_ACTIVE)) {
+        gpio_flags_t initial_flags = config->boot_on ? GPIO_OUTPUT_ACTIVE : GPIO_OUTPUT_INACTIVE;
+        if (gpio_pin_configure_dt(gpio, initial_flags)) {
             LOG_ERR("Failed to configure ext-power control pin %d", i);
             return -EIO;
         }
@@ -165,8 +168,12 @@ static int ext_power_generic_init(const struct device *dev) {
     k_work_init_delayable(&ext_power_save_work, ext_power_save_state_work);
 #endif
 
-    // Enable by default. We may get disabled again once settings load.
-    ext_power_enable(dev);
+    if (config->boot_on) {
+        data->status = true;
+    } else {
+        // Enable by default. We may get disabled again once settings load.
+        ext_power_enable(dev);
+    }
 
     if (config->init_delay_ms) {
         k_msleep(config->init_delay_ms);
@@ -196,7 +203,8 @@ static const struct gpio_dt_spec ext_power_control_gpios[DT_INST_PROP_LEN(0, con
 static const struct ext_power_generic_config config = {
     .control = ext_power_control_gpios,
     .control_gpios_count = DT_INST_PROP_LEN(0, control_gpios),
-    .init_delay_ms = DT_INST_PROP_OR(0, init_delay_ms, 0)};
+    .init_delay_ms = DT_INST_PROP_OR(0, init_delay_ms, 0),
+    .boot_on = DT_INST_PROP(0, boot_on)};
 
 static struct ext_power_generic_data data = {
     .status = false,

@@ -5,7 +5,7 @@
  * Uses the BB9981 RPC layer to talk to the connected firmware instance.
  */
 
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback, useContext, useRef } from "react";
 import { bb9981Rpc } from "./bb9981Rpc";
 import type {
   MacroDetails,
@@ -255,6 +255,39 @@ export function useTrackpadConfig() {
   const connection = useContext(ConnectionContext);
   const [config, setConfig] = useState<TrackpadConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const configRef = useRef<TrackpadConfig | undefined>(undefined);
+
+  const setTrackedConfig = useCallback((next: TrackpadConfig | undefined) => {
+    configRef.current = next;
+    setConfig(next);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!connection.conn) {
+      setTrackedConfig(undefined);
+      setError(undefined);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const cfg = await bb9981Rpc.settings.getTrackpadConfig();
+      setTrackedConfig(cfg);
+    } catch (error) {
+      console.error("Failed to load trackpad config", error);
+      setTrackedConfig(undefined);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load trackpad settings from the keyboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [connection.conn, setTrackedConfig]);
 
   useSub("rpc_notification.settings.trackpadConfigChanged", () => {
     if (!connection.conn) {
@@ -263,69 +296,101 @@ export function useTrackpadConfig() {
 
     void bb9981Rpc.settings
       .getTrackpadConfig()
-      .then((cfg) => setConfig(cfg))
+      .then((cfg) => {
+        setTrackedConfig(cfg);
+        setError(undefined);
+      })
       .catch((error) => {
         console.error("Failed to refresh trackpad config from notification", error);
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh trackpad settings from the keyboard."
+        );
       });
   });
 
   useEffect(() => {
     if (!connection.conn) {
-      setConfig(undefined);
+      setTrackedConfig(undefined);
       setLoading(false);
       return;
     }
-    let ignore = false;
-
-    async function loadTrackpadConfig() {
-      setLoading(true);
-      try {
-        const cfg = await bb9981Rpc.settings.getTrackpadConfig();
-        if (!ignore) {
-          setConfig(cfg);
-        }
-      } catch (error) {
-        console.error("Failed to load trackpad config", error);
-        if (!ignore) {
-          setConfig(undefined);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadTrackpadConfig();
+    refresh();
 
     const unsub = bb9981Rpc.settings.onTrackpadChange((cfg) => {
-      setConfig(cfg);
+      setTrackedConfig(cfg);
+      setError(undefined);
     });
 
     return () => {
-      ignore = true;
       unsub();
     };
-  }, [connection]);
+  }, [connection.conn, refresh, setTrackedConfig]);
 
-  const updateConfig = useCallback(async (newConfig: TrackpadConfig) => {
-    const result = await bb9981Rpc.settings.setTrackpadConfig(newConfig);
-    if (result === 0) {
-      setConfig(newConfig);
-    }
-    return result;
-  }, []);
+  const updateConfig = useCallback(
+    async (
+      nextConfig:
+        | TrackpadConfig
+        | ((current: TrackpadConfig) => TrackpadConfig)
+    ) => {
+      const previous = configRef.current;
+      if (!previous) {
+        throw new Error("Trackpad config is not loaded yet");
+      }
 
-  return { config, loading, updateConfig };
+      const resolvedConfig =
+        typeof nextConfig === "function" ? nextConfig(previous) : nextConfig;
+
+      setTrackedConfig(resolvedConfig);
+
+      const result = await bb9981Rpc.settings.setTrackpadConfig(resolvedConfig);
+      if (result !== 0) {
+        setTrackedConfig(previous);
+      }
+      return result;
+    },
+    [setTrackedConfig]
+  );
+
+  return { config, loading, error, refresh, updateConfig };
 }
 
 export function useBacklightConfig() {
   const connection = useContext(ConnectionContext);
   const [config, setConfig] = useState<BacklightConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setError(undefined);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const cfg = await bb9981Rpc.settings.getBacklightConfig();
+      setConfig(cfg);
+    } catch (error) {
+      console.error("Failed to load backlight config", error);
+      setConfig(undefined);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load lighting settings from the keyboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [connection.conn]);
 
   useSub("rpc_notification.settings.backlightConfigChanged", (cfg) => {
     setConfig(cfg as BacklightConfig);
+    setError(undefined);
   });
 
   useEffect(() => {
@@ -334,38 +399,17 @@ export function useBacklightConfig() {
       setLoading(false);
       return;
     }
-    let ignore = false;
-
-    async function loadBacklightConfig() {
-      setLoading(true);
-      try {
-        const cfg = await bb9981Rpc.settings.getBacklightConfig();
-        if (!ignore) {
-          setConfig(cfg);
-        }
-      } catch (error) {
-        console.error("Failed to load backlight config", error);
-        if (!ignore) {
-          setConfig(undefined);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadBacklightConfig();
+    refresh();
 
     const unsub = bb9981Rpc.settings.onBacklightChange((cfg) => {
       setConfig(cfg);
+      setError(undefined);
     });
 
     return () => {
-      ignore = true;
       unsub();
     };
-  }, [connection]);
+  }, [connection.conn, refresh]);
 
   const updateConfig = useCallback(async (newConfig: BacklightConfig) => {
     const result = await bb9981Rpc.settings.setBacklightConfig(newConfig);
@@ -375,16 +419,44 @@ export function useBacklightConfig() {
     return result;
   }, []);
 
-  return { config, loading, updateConfig };
+  return { config, loading, error, refresh, updateConfig };
 }
 
 export function useBluetoothConfig() {
   const connection = useContext(ConnectionContext);
   const [config, setConfig] = useState<BluetoothConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setError(undefined);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const cfg = await bb9981Rpc.settings.getBluetoothConfig();
+      setConfig(cfg);
+    } catch (error) {
+      console.error("Failed to load Bluetooth config", error);
+      setConfig(undefined);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load Bluetooth settings from the keyboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [connection.conn]);
 
   useSub("rpc_notification.settings.bluetoothConfigChanged", (cfg) => {
     setConfig(cfg as BluetoothConfig);
+    setError(undefined);
   });
 
   useEffect(() => {
@@ -393,38 +465,17 @@ export function useBluetoothConfig() {
       setLoading(false);
       return;
     }
-    let ignore = false;
-
-    async function loadBluetoothConfig() {
-      setLoading(true);
-      try {
-        const cfg = await bb9981Rpc.settings.getBluetoothConfig();
-        if (!ignore) {
-          setConfig(cfg);
-        }
-      } catch (error) {
-        console.error("Failed to load Bluetooth config", error);
-        if (!ignore) {
-          setConfig(undefined);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadBluetoothConfig();
+    refresh();
 
     const unsub = bb9981Rpc.settings.onBluetoothChange((cfg) => {
       setConfig(cfg);
+      setError(undefined);
     });
 
     return () => {
-      ignore = true;
       unsub();
     };
-  }, [connection]);
+  }, [connection.conn, refresh]);
 
   const updateConfig = useCallback(async (newConfig: BluetoothConfig) => {
     const result = await bb9981Rpc.settings.setBluetoothConfig(newConfig);
@@ -480,13 +531,49 @@ export function useBluetoothConfig() {
     return ok;
   }, []);
 
-  return { config, loading, updateConfig, selectProfile, clearProfile, renameProfile };
+  return {
+    config,
+    loading,
+    error,
+    refresh,
+    updateConfig,
+    selectProfile,
+    clearProfile,
+    renameProfile,
+  };
 }
 
 export function usePowerConfig() {
   const connection = useContext(ConnectionContext);
   const [config, setConfig] = useState<PowerConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setError(undefined);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const cfg = await bb9981Rpc.settings.getPowerConfig();
+      setConfig(cfg);
+    } catch (error) {
+      console.error("Failed to load power config", error);
+      setConfig(undefined);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load power settings from the keyboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [connection.conn]);
 
   useSub("rpc_notification.settings.powerConfigChanged", () => {
     if (!connection.conn) {
@@ -495,9 +582,17 @@ export function usePowerConfig() {
 
     void bb9981Rpc.settings
       .getPowerConfig()
-      .then((cfg) => setConfig(cfg))
+      .then((cfg) => {
+        setConfig(cfg);
+        setError(undefined);
+      })
       .catch((error) => {
         console.error("Failed to refresh power config from notification", error);
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh power settings from the keyboard."
+        );
       });
   });
 
@@ -507,38 +602,17 @@ export function usePowerConfig() {
       setLoading(false);
       return;
     }
-    let ignore = false;
-
-    async function loadPowerConfig() {
-      setLoading(true);
-      try {
-        const cfg = await bb9981Rpc.settings.getPowerConfig();
-        if (!ignore) {
-          setConfig(cfg);
-        }
-      } catch (error) {
-        console.error("Failed to load power config", error);
-        if (!ignore) {
-          setConfig(undefined);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadPowerConfig();
+    refresh();
 
     const unsub = bb9981Rpc.settings.onPowerChange((cfg) => {
       setConfig(cfg);
+      setError(undefined);
     });
 
     return () => {
-      ignore = true;
       unsub();
     };
-  }, [connection]);
+  }, [connection.conn, refresh]);
 
   const updateConfig = useCallback(async (newConfig: PowerConfig) => {
     const result = await bb9981Rpc.settings.setPowerConfig(newConfig);
@@ -552,13 +626,40 @@ export function usePowerConfig() {
     return bb9981Rpc.settings.powerOff();
   }, []);
 
-  return { config, loading, updateConfig, powerOff };
+  return { config, loading, error, refresh, updateConfig, powerOff };
 }
 
 export function useSleepConfig() {
   const connection = useContext(ConnectionContext);
   const [config, setConfig] = useState<SleepConfig | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    if (!connection.conn) {
+      setConfig(undefined);
+      setError(undefined);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(undefined);
+    try {
+      const cfg = await bb9981Rpc.settings.getSleepConfig();
+      setConfig(cfg);
+    } catch (error) {
+      console.error("Failed to load sleep config", error);
+      setConfig(undefined);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load sleep settings from the keyboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [connection.conn]);
 
   useSub("rpc_notification.settings.sleepConfigChanged", () => {
     if (!connection.conn) {
@@ -567,9 +668,17 @@ export function useSleepConfig() {
 
     void bb9981Rpc.settings
       .getSleepConfig()
-      .then((cfg) => setConfig(cfg))
+      .then((cfg) => {
+        setConfig(cfg);
+        setError(undefined);
+      })
       .catch((error) => {
         console.error("Failed to refresh sleep config from notification", error);
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh sleep settings from the keyboard."
+        );
       });
   });
 
@@ -579,38 +688,17 @@ export function useSleepConfig() {
       setLoading(false);
       return;
     }
-    let ignore = false;
-
-    async function loadSleepConfig() {
-      setLoading(true);
-      try {
-        const cfg = await bb9981Rpc.settings.getSleepConfig();
-        if (!ignore) {
-          setConfig(cfg);
-        }
-      } catch (error) {
-        console.error("Failed to load sleep config", error);
-        if (!ignore) {
-          setConfig(undefined);
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadSleepConfig();
+    refresh();
 
     const unsub = bb9981Rpc.settings.onSleepChange((cfg) => {
       setConfig(cfg);
+      setError(undefined);
     });
 
     return () => {
-      ignore = true;
       unsub();
     };
-  }, [connection]);
+  }, [connection.conn, refresh]);
 
   const updateConfig = useCallback(async (newConfig: SleepConfig) => {
     const result = await bb9981Rpc.settings.setSleepConfig(newConfig);
@@ -620,5 +708,5 @@ export function useSleepConfig() {
     return result;
   }, []);
 
-  return { config, loading, updateConfig };
+  return { config, loading, error, refresh, updateConfig };
 }

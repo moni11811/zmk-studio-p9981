@@ -23,7 +23,7 @@ import type { BacklightConfig } from "../rpc/bb9981Types";
  */
 
 export const BacklightSettings = () => {
-  const { config, loading, updateConfig } = useBacklightConfig();
+  const { config, loading, error, refresh, updateConfig } = useBacklightConfig();
   const deferredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -69,10 +69,53 @@ export const BacklightSettings = () => {
     [config, pushConfig]
   );
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-8 text-gray-500">
         Loading backlight settings...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-lg font-bold text-amber-900">Lighting Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            The app could not load lighting settings from the keyboard.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{error}</p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-gray-200 bg-gray-50 p-4">
+          <h2 className="text-lg font-bold text-gray-900">Lighting Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            The keyboard did not return lighting settings for this session.
+          </p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-100"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -83,9 +126,8 @@ export const BacklightSettings = () => {
       <p className="text-sm text-gray-500">
         Live-sync note: every control here maps to active firmware behavior.
         Trackpad lighting uses the ZMK backlight path; keyboard lighting uses
-        the RGB path. Idle auto-off and timeout now apply to both lighting
-        paths together. USB/charging trackpad LED behavior now lives in the
-        Power tab so it doesn&apos;t interfere with normal lighting controls.
+        the RGB path. USB/charging trackpad LED behavior now lives in the Power
+        tab so it doesn&apos;t interfere with normal lighting controls.
       </p>
 
       {/* Trackpad Backlight */}
@@ -208,9 +250,44 @@ export const BacklightSettings = () => {
           can be adjusted here.
         </div>
 
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={config.backlightAutoOff}
+            onChange={(e) =>
+              updateField("backlightAutoOff", e.target.checked)
+            }
+            disabled={!config.rgbEnabled}
+          />
+          Keyboard lighting auto-off on idle
+        </label>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium">
+            Keyboard Lighting Idle Timeout ({config.idleTimeoutMs / 1000}s)
+          </label>
+          <input
+            type="range"
+            min={5000}
+            max={300000}
+            step={5000}
+            value={config.idleTimeoutMs}
+            onChange={(e) =>
+              updateField("idleTimeoutMs", parseInt(e.target.value), true)
+            }
+            className="w-full"
+            disabled={!config.rgbEnabled || !config.backlightAutoOff}
+          />
+          <div className="flex justify-between text-xs text-gray-400">
+            <span>5s</span>
+            <span>5min</span>
+          </div>
+        </div>
+
         <div className="rounded bg-gray-50 p-2 text-xs text-gray-500">
-          Keyboard lighting idle timeout uses the shared lighting idle controls
-          above.
+          Current firmware uses one shared lighting idle timer for the trackpad
+          and keyboard lighting paths, but this control is now surfaced here so
+          keyboard timeout tuning is directly available.
         </div>
 
         <div className="p-2 bg-gray-50 rounded text-xs text-gray-500">

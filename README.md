@@ -4,10 +4,6 @@ Public, sanitized fork of ZMK Studio for the BBP9981 / P9981 keyboard family.
 
 This fork is focused on making the BBP9981 usable with a desktop Studio app and matching firmware, while keeping the public repository safe to share.
 
-## Current Issues
-
-- Boot reliability: seems to improve by clicking the trackpad right after turning on.
-
 ## Keep My Robots Fed
 
 If this fork saves you time and you want to keep my robots fed:
@@ -142,13 +138,10 @@ If you are packaging a fresh app binary from this source and want to publish tha
 
 ## Releases
 
-The published `v1.0.1` release contains:
+The published `v1.7` release contains:
 
-- a universal macOS DMG
-- a Windows setup executable
-- a Windows portable executable
-- a Windows MSI package
-- the matching firmware UF2
+- a macOS DMG built from this sanitized public repo
+- the matching BBP9981 firmware UF2
 - `SHA256SUMS.txt` for the release assets
 
 ## Upstream

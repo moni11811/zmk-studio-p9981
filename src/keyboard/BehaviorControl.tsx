@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   BehaviorBindingParametersSet,
@@ -34,6 +34,7 @@ import { ConnectionContext } from "../rpc/ConnectionContext";
 
 type StudioBehaviorDetails = GetBehaviorDetailsResponse & {
   isUserDefined?: boolean;
+  rawDisplayName?: string;
 };
 
 interface BehaviorControlProps {
@@ -205,35 +206,43 @@ function createDefaultBinding(
   };
 }
 
-function findBehaviorByDisplayName(
-  behaviors: StudioBehaviorDetails[],
-  displayName: string
-): StudioBehaviorDetails | undefined {
-  return behaviors.find(
-    (behavior) =>
-      normalizeBehaviorName(getBehaviorLabel(behavior)) ===
-      normalizeBehaviorName(displayName)
-  );
+function normalizeBehaviorName(value?: string): string | undefined {
+  const normalized = value
+    ?.trim()
+    ?.toLowerCase()
+    ?.replace(/[^a-z0-9]+/g, " ")
+    ?.replace(/\s+/g, " ")
+    ?.trim();
+
+  return normalized || undefined;
 }
 
-function findBehaviorByDisplayNames(
-  behaviors: StudioBehaviorDetails[],
-  displayNames: string[]
-): StudioBehaviorDetails | undefined {
-  for (const displayName of displayNames) {
-    const match = findBehaviorByDisplayName(behaviors, displayName);
-    if (match) {
-      return match;
-    }
-  }
+function behaviorLookupNames(behavior: StudioBehaviorDetails): string[] {
+  return [
+    normalizeBehaviorName(getBehaviorLabel(behavior)),
+    normalizeBehaviorName(behavior.displayName),
+    normalizeBehaviorName(behavior.rawDisplayName),
+  ].filter((value): value is string => !!value);
+}
 
-  return undefined;
+function findBehaviorByAliases(
+  behaviors: StudioBehaviorDetails[],
+  aliases: string[]
+): StudioBehaviorDetails | undefined {
+  const normalizedAliases = aliases
+    .map((alias) => normalizeBehaviorName(alias))
+    .filter((alias): alias is string => !!alias);
+
+  return behaviors.find((behavior) =>
+    behaviorLookupNames(behavior).some((name) => normalizedAliases.includes(name))
+  );
 }
 
 function createDefaultHoldTapConfig(
   behaviors: StudioBehaviorDetails[]
 ): HoldTapBehaviorConfig {
-  const keyPress = findBehaviorByDisplayName(behaviors, "Key Press") ?? behaviors[0];
+  const keyPress =
+    findBehaviorByAliases(behaviors, ["Key Press", "Keypress"]) ?? behaviors[0];
 
   return {
     type: "holdTap",
@@ -250,7 +259,8 @@ function createDefaultHoldTapConfig(
 function createDefaultModTapConfig(
   behaviors: StudioBehaviorDetails[]
 ): HoldTapBehaviorConfig {
-  const keyPress = findBehaviorByDisplayName(behaviors, "Key Press") ?? behaviors[0];
+  const keyPress =
+    findBehaviorByAliases(behaviors, ["Key Press", "Keypress"]) ?? behaviors[0];
 
   return {
     type: "holdTap",
@@ -268,9 +278,10 @@ function createDefaultLayerTapConfig(
   behaviors: StudioBehaviorDetails[]
 ): HoldTapBehaviorConfig {
   const momentaryLayer =
-    findBehaviorByDisplayNames(behaviors, ["Momentary Layer", "Momentary layer"]) ??
+    findBehaviorByAliases(behaviors, ["Momentary Layer", "Momentary layer"]) ??
     behaviors[0];
-  const keyPress = findBehaviorByDisplayName(behaviors, "Key Press") ?? behaviors[0];
+  const keyPress =
+    findBehaviorByAliases(behaviors, ["Key Press", "Keypress"]) ?? behaviors[0];
 
   return {
     type: "holdTap",
@@ -288,8 +299,13 @@ function createDefaultTapDanceConfig(
   behaviors: StudioBehaviorDetails[]
 ): TapDanceBehaviorConfig {
   const noneBehavior =
-    findBehaviorByDisplayName(behaviors, "No Action") ??
-    findBehaviorByDisplayName(behaviors, "None") ??
+    findBehaviorByAliases(behaviors, [
+      "No Action",
+      "None",
+      "Empty (Null) - No Action",
+      "Empty",
+      "Null",
+    ]) ??
     behaviors.find((behavior) => getBehaviorLabel(behavior) !== "Transparent") ??
     behaviors[0];
 
@@ -310,7 +326,8 @@ function createDefaultTapDanceConfig(
 function createDefaultStickyKeyConfig(
   behaviors: StudioBehaviorDetails[]
 ): StickyKeyBehaviorConfig {
-  const keyPress = findBehaviorByDisplayName(behaviors, "Key Press") ?? behaviors[0];
+  const keyPress =
+    findBehaviorByAliases(behaviors, ["Key Press", "Keypress"]) ?? behaviors[0];
 
   return {
     type: "stickyKey",
@@ -327,7 +344,7 @@ function createDefaultStickyLayerConfig(
   behaviors: StudioBehaviorDetails[]
 ): StickyKeyBehaviorConfig {
   const momentaryLayer =
-    findBehaviorByDisplayNames(behaviors, ["Momentary Layer", "Momentary layer"]) ??
+    findBehaviorByAliases(behaviors, ["Momentary Layer", "Momentary layer"]) ??
     behaviors[0];
 
   return {
@@ -397,10 +414,6 @@ function holdTapFlavorLabel(flavor: HoldTapFlavor): string {
     default:
       return "Hold Preferred";
   }
-}
-
-function normalizeBehaviorName(value?: string): string | undefined {
-  return value?.trim()?.toLowerCase();
 }
 
 function behaviorTemplateLabel(
@@ -907,6 +920,9 @@ function StickyKeyEditor({
 
 export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
   const connection = useContext(ConnectionContext);
+  const behaviorMapRef = useRef<Map<number, StudioBehaviorDetails>>(new Map());
+  const knownBehaviorIdsRef = useRef<number[]>([]);
+  const selectedBehaviorIdRef = useRef<number | null>(null);
   const [runtimeBehaviorDetails, setRuntimeBehaviorDetails] = useState<
     Record<number, StudioBehaviorDetails>
   >({});
@@ -921,6 +937,8 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
   const [creatingTemplate, setCreatingTemplate] = useState<BehaviorTemplateKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [behaviorSearch, setBehaviorSearch] = useState("");
+  const [selectedBehaviorId, setSelectedBehaviorId] = useState<number | null>(null);
 
   const behaviorMap = useMemo(
     () =>
@@ -933,12 +951,28 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     [behaviors, runtimeBehaviorDetails]
   );
 
-  const sortedBehaviors = useMemo(
+  useEffect(() => {
+    behaviorMapRef.current = behaviorMap;
+  }, [behaviorMap]);
+
+  useEffect(() => {
+    selectedBehaviorIdRef.current = selectedBehaviorId;
+  }, [selectedBehaviorId]);
+
+  const listedBehaviors = useMemo(
     () =>
       [...behaviors].sort((a, b) =>
         getBehaviorLabel(a).localeCompare(getBehaviorLabel(b))
       ),
     [behaviors]
+  );
+
+  const allBehaviorsSorted = useMemo(
+    () =>
+      [...behaviorMap.values()].sort((a, b) =>
+        getBehaviorLabel(a).localeCompare(getBehaviorLabel(b))
+      ),
+    [behaviorMap]
   );
 
   const customConfigs = useMemo(
@@ -953,8 +987,88 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     [behaviorMap, configs]
   );
 
+  const normalizedBehaviorSearch = behaviorSearch.trim().toLowerCase();
+
+  const getConfigDisplayName = useCallback(
+    (config: BehaviorRuntimeConfig) => {
+      const draftName = nameDrafts[config.behaviorId]?.trim();
+      if (draftName) {
+        return draftName;
+      }
+
+      const behavior = behaviorMap.get(config.behaviorId);
+      return behavior ? getBehaviorLabel(behavior) : `Behavior ${config.behaviorId}`;
+    },
+    [behaviorMap, nameDrafts]
+  );
+
+  const configMatchesSearch = useCallback(
+    (config: BehaviorRuntimeConfig) => {
+      if (!normalizedBehaviorSearch) {
+        return true;
+      }
+
+      const behavior = behaviorMap.get(config.behaviorId);
+      const haystack = [
+        getConfigDisplayName(config),
+        behaviorFamilyLabel(config.type),
+        behaviorTemplateLabel(config, behavior, behaviorMap),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedBehaviorSearch);
+    },
+    [behaviorMap, getConfigDisplayName, normalizedBehaviorSearch]
+  );
+
+  const filteredCustomConfigs = useMemo(
+    () => customConfigs.filter(configMatchesSearch),
+    [configMatchesSearch, customConfigs]
+  );
+
+  const filteredReconfigurationConfigs = useMemo(
+    () => reconfigurationConfigs.filter(configMatchesSearch),
+    [configMatchesSearch, reconfigurationConfigs]
+  );
+
+  const visibleConfigs = useMemo(
+    () => [...filteredCustomConfigs, ...filteredReconfigurationConfigs],
+    [filteredCustomConfigs, filteredReconfigurationConfigs]
+  );
+
+  const runtimeBehaviorIds = useMemo(
+    () => new Set(configs.map((config) => config.behaviorId)),
+    [configs]
+  );
+
+  const otherBehaviors = useMemo(
+    () =>
+      allBehaviorsSorted.filter((behavior) => !runtimeBehaviorIds.has(behavior.id)),
+    [allBehaviorsSorted, runtimeBehaviorIds]
+  );
+
+  const filteredOtherBehaviors = useMemo(() => {
+    if (!normalizedBehaviorSearch) {
+      return otherBehaviors;
+    }
+
+    return otherBehaviors.filter((behavior) => {
+      const haystack = [
+        getBehaviorLabel(behavior),
+        describeBehaviorParameterFlow(behavior.metadata),
+        "not live editable",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedBehaviorSearch);
+    });
+  }, [normalizedBehaviorSearch, otherBehaviors]);
+
   const refresh = useCallback(async () => {
     if (!connection.conn) {
+      knownBehaviorIdsRef.current = [];
       setRuntimeBehaviorDetails({});
       setConfigs([]);
       setDrafts({});
@@ -966,10 +1080,17 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     setError(null);
 
     try {
+      const currentBehaviorMap = behaviorMapRef.current;
+      const behaviorIdsToLoad = [...new Set([
+        ...listedBehaviors.map((behavior) => behavior.id),
+        ...knownBehaviorIdsRef.current,
+        ...(selectedBehaviorIdRef.current !== null ? [selectedBehaviorIdRef.current] : []),
+      ])];
+
       const results = await Promise.all(
-        sortedBehaviors.map(async (behavior) => ({
-          behaviorId: behavior.id,
-          runtime: await bb9981Rpc.behaviors.getBehaviorRuntimeConfig(behavior.id),
+        behaviorIdsToLoad.map(async (behaviorId) => ({
+          behaviorId,
+          runtime: await bb9981Rpc.behaviors.getBehaviorRuntimeConfig(behaviorId),
         }))
       );
 
@@ -977,48 +1098,59 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
         .map((result) => result.runtime)
         .filter((runtime): runtime is BehaviorRuntimeConfig => !!runtime);
 
-      const referencedBehaviorIds = new Set<number>();
+      knownBehaviorIdsRef.current = [
+        ...new Set([
+          ...behaviorIdsToLoad,
+          ...nextConfigs.map((config) => config.behaviorId),
+        ]),
+      ];
+
+      const detailBehaviorIds = new Set<number>();
       nextConfigs.forEach((config) => {
+        detailBehaviorIds.add(config.behaviorId);
+
         if (config.type === "holdTap") {
-          referencedBehaviorIds.add(config.holdBehaviorId);
-          referencedBehaviorIds.add(config.tapBehaviorId);
+          detailBehaviorIds.add(config.holdBehaviorId);
+          detailBehaviorIds.add(config.tapBehaviorId);
           return;
         }
 
         if (config.type === "tapDance") {
           config.bindings.forEach((binding) =>
-            referencedBehaviorIds.add(binding.behaviorId)
+            detailBehaviorIds.add(binding.behaviorId)
           );
           return;
         }
 
-        referencedBehaviorIds.add(config.bindingBehaviorId);
+        detailBehaviorIds.add(config.bindingBehaviorId);
       });
 
-      const missingBehaviorIds = [...referencedBehaviorIds].filter(
-        (behaviorId) => behaviorId > 0 && !behaviorMap.has(behaviorId)
+      const behaviorDetailIdsToRefresh = [...detailBehaviorIds].filter(
+        (behaviorId) => behaviorId > 0
+      );
+      const fetchedBehaviorDetails = await Promise.all(
+        behaviorDetailIdsToRefresh.map((behaviorId) =>
+          bb9981Rpc.behaviors.getBehaviorDetails(behaviorId)
+        )
       );
 
-      if (missingBehaviorIds.length > 0) {
-        const fetchedBehaviorDetails = await Promise.all(
-          missingBehaviorIds.map((behaviorId) =>
-            bb9981Rpc.behaviors.getBehaviorDetails(behaviorId)
-          )
-        );
+      const fetchedBehaviorMap = Object.fromEntries(
+        fetchedBehaviorDetails
+          .filter((detail): detail is StudioBehaviorDetails => !!detail)
+          .map((detail) => [detail.id, detail])
+      );
 
-        const fetchedBehaviorMap = Object.fromEntries(
-          fetchedBehaviorDetails
-            .filter((detail): detail is StudioBehaviorDetails => !!detail)
-            .map((detail) => [detail.id, detail])
-        );
-
-        if (Object.keys(fetchedBehaviorMap).length > 0) {
-          setRuntimeBehaviorDetails((current) => ({
-            ...current,
-            ...fetchedBehaviorMap,
-          }));
-        }
+      if (Object.keys(fetchedBehaviorMap).length > 0) {
+        setRuntimeBehaviorDetails((current) => ({
+          ...current,
+          ...fetchedBehaviorMap,
+        }));
       }
+
+      const mergedBehaviorMap = new Map(currentBehaviorMap);
+      Object.values(fetchedBehaviorMap).forEach((detail) => {
+        mergedBehaviorMap.set(detail.id, detail);
+      });
 
       setConfigs(nextConfigs);
       setDrafts(
@@ -1029,7 +1161,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
       setNameDrafts(
         Object.fromEntries(
           nextConfigs.map((config) => {
-            const behavior = behaviorMap.get(config.behaviorId);
+            const behavior = mergedBehaviorMap.get(config.behaviorId);
 
             return [
               config.behaviorId,
@@ -1046,11 +1178,32 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     } finally {
       setLoading(false);
     }
-  }, [behaviorMap, connection.conn, sortedBehaviors]);
+  }, [connection.conn, listedBehaviors]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const visibleBehaviorIds = new Set<number>([
+      ...visibleConfigs.map((config) => config.behaviorId),
+      ...filteredOtherBehaviors.map((behavior) => behavior.id),
+    ]);
+
+    if (visibleBehaviorIds.size === 0) {
+      setSelectedBehaviorId(null);
+      return;
+    }
+
+    if (
+      selectedBehaviorId === null ||
+      !visibleBehaviorIds.has(selectedBehaviorId)
+    ) {
+      setSelectedBehaviorId(
+        visibleConfigs[0]?.behaviorId ?? filteredOtherBehaviors[0]?.id ?? null
+      );
+    }
+  }, [filteredOtherBehaviors, selectedBehaviorId, visibleConfigs]);
 
   const updateDraft = useCallback(
     (behaviorId: number, nextDraft: BehaviorRuntimeConfig) => {
@@ -1124,7 +1277,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
       setError(null);
       setMessage(null);
 
-      const config = template.createConfig(sortedBehaviors);
+      const config = template.createConfig(allBehaviorsSorted);
       const displayName = template.defaultName;
 
       try {
@@ -1138,7 +1291,11 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
           return;
         }
 
+        knownBehaviorIdsRef.current = [
+          ...new Set([...knownBehaviorIdsRef.current, result.ok]),
+        ];
         await refresh();
+        setSelectedBehaviorId(result.ok);
         setMessage("New behavior created live and saved to the keyboard.");
       } catch (createError) {
         console.error("Failed to create behavior", createError);
@@ -1147,7 +1304,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
         setCreatingTemplate(null);
       }
     },
-    [refresh, sortedBehaviors]
+    [allBehaviorsSorted, refresh]
   );
 
   const saveName = useCallback(
@@ -1186,6 +1343,10 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
           ...current,
           [behaviorId]: displayName,
         }));
+        knownBehaviorIdsRef.current = [
+          ...new Set([...knownBehaviorIdsRef.current, behaviorId]),
+        ];
+        await refresh();
         setMessage("Behavior name updated on the keyboard.");
       } catch (renameError) {
         console.error("Failed to rename behavior", renameError);
@@ -1211,6 +1372,9 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
         }
 
         deleteBehaviorDisplayNameOverride(behaviorId);
+        knownBehaviorIdsRef.current = knownBehaviorIdsRef.current.filter(
+          (knownBehaviorId) => knownBehaviorId !== behaviorId
+        );
         await refresh();
         setMessage("Behavior deleted from the keyboard.");
       } catch (deleteError) {
@@ -1266,7 +1430,11 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
           return;
         }
 
+        knownBehaviorIdsRef.current = [
+          ...new Set([...knownBehaviorIdsRef.current, result.ok]),
+        ];
         await refresh();
+        setSelectedBehaviorId(result.ok);
         setMessage("Behavior duplicated live and saved to the keyboard.");
       } catch (duplicateError) {
         console.error("Failed to duplicate behavior", duplicateError);
@@ -1278,9 +1446,155 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
     [behaviorMap, drafts, nameDrafts, refresh]
   );
 
+  const selectedConfig =
+    visibleConfigs.find((config) => config.behaviorId === selectedBehaviorId) ?? null;
+  const selectedBehavior =
+    (selectedBehaviorId !== null ? behaviorMap.get(selectedBehaviorId) : undefined) ?? null;
+
+  const renderConfigEditor = (
+    config: BehaviorRuntimeConfig,
+    kind: "custom" | "reconfiguration"
+  ) => {
+    const draft = drafts[config.behaviorId];
+    const behavior = behaviorMap.get(config.behaviorId);
+
+    if (!draft) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-1 text-xs font-medium ${
+                  kind === "custom"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-amber-100 text-amber-900"
+                }`}
+              >
+                {kind === "custom" ? "Custom Behavior" : "Reconfiguration"}
+              </span>
+              <span className="text-xs text-gray-400">ID {config.behaviorId}</span>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={nameDrafts[config.behaviorId] ?? ""}
+                onChange={(event) =>
+                  setNameDrafts((current) => ({
+                    ...current,
+                    [config.behaviorId]: event.target.value,
+                  }))
+                }
+                className="border rounded px-2 py-1.5 text-base font-semibold"
+              />
+              <button
+                type="button"
+                onClick={() => void saveName(config.behaviorId)}
+                disabled={renamingId === config.behaviorId}
+                className="rounded border border-base-300 bg-base-100 px-2 py-1 text-xs hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Save Name
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500">{behaviorFamilyLabel(draft.type)}</p>
+            <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+              <span className="rounded-full bg-base-200 px-2 py-1">
+                Base: {behaviorTemplateLabel(draft, behavior, behaviorMap)}
+              </span>
+              <span className="rounded-full bg-base-200 px-2 py-1">
+                Compatible: {behaviorCompatibleLabel(draft.type)}
+              </span>
+              <span className="rounded-full bg-base-200 px-2 py-1">
+                Uses: {behaviorUsesCount(draft)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => void duplicateBehavior(config.behaviorId)}
+              disabled={duplicatingId === config.behaviorId}
+              className="rounded border border-base-300 bg-base-100 px-2 py-1 text-xs hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={() => void deleteBehavior(config.behaviorId)}
+              disabled={deletingId === config.behaviorId}
+              className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+
+        {draft.type === "holdTap" && (
+          <HoldTapEditor
+            behavior={behavior}
+            draft={draft}
+            options={allBehaviorsSorted}
+            onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
+          />
+        )}
+
+        {draft.type === "tapDance" && (
+          <TapDanceEditor
+            draft={draft}
+            behaviors={allBehaviorsSorted}
+            layers={layers}
+            onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
+          />
+        )}
+
+        {draft.type === "stickyKey" && (
+          <StickyKeyEditor
+            behavior={behavior}
+            draft={draft}
+            options={allBehaviorsSorted}
+            onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
+          />
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => void saveDraft(config.behaviorId)}
+            disabled={
+              savingId === config.behaviorId ||
+              renamingId === config.behaviorId ||
+              deletingId === config.behaviorId ||
+              duplicatingId === config.behaviorId
+            }
+            className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            Apply Live
+          </button>
+          <button
+            onClick={() => resetDraft(config.behaviorId)}
+            disabled={
+              savingId === config.behaviorId ||
+              renamingId === config.behaviorId ||
+              deletingId === config.behaviorId ||
+              duplicatingId === config.behaviorId
+            }
+            className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-4 flex flex-col gap-4">
-      <div className="rounded-lg border bg-white p-4 flex flex-col gap-3">
+      <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 flex flex-col gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
           <h2 className="text-lg font-semibold">Behavior Control</h2>
@@ -1299,7 +1613,7 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
               type="button"
               onClick={() => void createBehavior(template.key)}
               disabled={creatingTemplate !== null}
-              className="rounded border border-gray-300 px-3 py-3 text-left hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded border border-base-300 bg-base-100 px-3 py-3 text-left hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="font-medium text-sm">{template.label}</div>
               <div className="mt-1 text-xs text-gray-500">
@@ -1314,305 +1628,198 @@ export function BehaviorControl({ behaviors, layers }: BehaviorControlProps) {
       </div>
 
       {loading ? (
-        <div className="rounded-lg border bg-white p-4 text-sm text-gray-500">
+        <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 text-sm text-gray-500">
           Loading live behavior configuration from the keyboard...
         </div>
       ) : configs.length === 0 ? (
-        <div className="rounded-lg border bg-white p-4 text-sm text-gray-500">
+        <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 text-sm text-gray-500">
           No live-editable hold-tap, tap-dance, or sticky behaviors were exposed
           by the connected firmware.
         </div>
       ) : (
-        <>
-          <div className="rounded-lg border bg-white p-4 flex flex-col gap-2">
-            <h3 className="text-base font-semibold">Custom Behaviors</h3>
-            <p className="text-sm text-gray-600">
-              User-defined live behaviors created in Studio. These are closest to
-              keymap-editor&apos;s custom behavior list, but they are applied directly
-              to the connected keyboard.
-            </p>
-            <p className="text-xs text-gray-500">
-              {customConfigs.length === 0
-                ? "No user-defined live behaviors are currently stored on the keyboard."
-                : `${customConfigs.length} custom behavior${customConfigs.length === 1 ? "" : "s"} available.`}
-            </p>
-          </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="rounded-lg border border-base-300 bg-base-200 shadow-sm p-4 flex flex-col gap-4 xl:max-h-[75vh] xl:sticky xl:top-4">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-base font-semibold">Behavior List</h3>
+              <p className="text-sm text-gray-600">
+                Pick one behavior to edit instead of scrolling through the whole
+                runtime list.
+              </p>
+            </div>
 
-          {customConfigs.map((config) => {
-            const draft = drafts[config.behaviorId];
-            const behavior = behaviorMap.get(config.behaviorId);
+            <input
+              type="search"
+              value={behaviorSearch}
+              onChange={(event) => setBehaviorSearch(event.target.value)}
+              placeholder="Search name, family, or base..."
+              className="rounded border border-base-300 bg-base-100 px-3 py-2 text-sm"
+            />
 
-            if (!draft) {
-              return null;
-            }
-
-            return (
-              <div
-                key={config.behaviorId}
-                className="rounded-lg border bg-white p-4 flex flex-col gap-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={nameDrafts[config.behaviorId] ?? ""}
-                        onChange={(event) =>
-                          setNameDrafts((current) => ({
-                            ...current,
-                            [config.behaviorId]: event.target.value,
-                          }))
-                        }
-                        className="border rounded px-2 py-1.5 text-base font-semibold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void saveName(config.behaviorId)}
-                        disabled={renamingId === config.behaviorId}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Save Name
-                      </button>
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      {behaviorFamilyLabel(draft.type)}
-                    </p>
-                    <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-                      <span className="rounded-full bg-gray-100 px-2 py-1">
-                        Base: {behaviorTemplateLabel(draft, behavior, behaviorMap)}
-                      </span>
-                      <span className="rounded-full bg-gray-100 px-2 py-1">
-                        Compatible: {behaviorCompatibleLabel(draft.type)}
-                      </span>
-                      <span className="rounded-full bg-gray-100 px-2 py-1">
-                        Uses: {behaviorUsesCount(draft)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <span className="text-xs text-gray-400">
-                      ID {config.behaviorId}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void duplicateBehavior(config.behaviorId)}
-                      disabled={duplicatingId === config.behaviorId}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteBehavior(config.behaviorId)}
-                      disabled={deletingId === config.behaviorId}
-                      className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                {draft.type === "holdTap" && (
-                  <HoldTapEditor
-                    behavior={behavior}
-                    draft={draft}
-                    options={sortedBehaviors}
-                    onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                  />
-                )}
-
-                {draft.type === "tapDance" && (
-                  <TapDanceEditor
-                    draft={draft}
-                    behaviors={sortedBehaviors}
-                    layers={layers}
-                    onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                  />
-                )}
-
-                {draft.type === "stickyKey" && (
-                  <StickyKeyEditor
-                    behavior={behavior}
-                    draft={draft}
-                    options={sortedBehaviors}
-                    onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                  />
-                )}
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => void saveDraft(config.behaviorId)}
-                    disabled={
-                      savingId === config.behaviorId ||
-                      renamingId === config.behaviorId ||
-                      deletingId === config.behaviorId ||
-                      duplicatingId === config.behaviorId
-                    }
-                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    Apply Live
-                  </button>
-                  <button
-                    onClick={() => resetDraft(config.behaviorId)}
-                    disabled={
-                      savingId === config.behaviorId ||
-                      renamingId === config.behaviorId ||
-                      deletingId === config.behaviorId ||
-                      duplicatingId === config.behaviorId
-                    }
-                    className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-          <div className="rounded-lg border bg-white p-4 flex flex-col gap-2">
-            <h3 className="text-base font-semibold">Reconfigurations</h3>
-            <p className="text-sm text-gray-600">
-              Built-in behavior bases exposed by firmware for live tuning. This is
-              the runtime counterpart to keymap-editor&apos;s reconfiguration surface.
-            </p>
-            <p className="text-xs text-gray-500">
-              {reconfigurationConfigs.length === 0
-                ? "No built-in runtime behavior reconfigurations are currently exposed."
-                : `${reconfigurationConfigs.length} runtime reconfiguration${reconfigurationConfigs.length === 1 ? "" : "s"} available.`}
-            </p>
-          </div>
-
-          {reconfigurationConfigs.map((config) => {
-          const draft = drafts[config.behaviorId];
-          const behavior = behaviorMap.get(config.behaviorId);
-
-          if (!draft) {
-            return null;
-          }
-
-          return (
-            <div
-              key={config.behaviorId}
-              className="rounded-lg border bg-white p-4 flex flex-col gap-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={nameDrafts[config.behaviorId] ?? ""}
-                      onChange={(event) =>
-                        setNameDrafts((current) => ({
-                          ...current,
-                          [config.behaviorId]: event.target.value,
-                        }))
-                      }
-                      className="border rounded px-2 py-1.5 text-base font-semibold"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveName(config.behaviorId)}
-                      disabled={renamingId === config.behaviorId}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Save Name
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    {behaviorFamilyLabel(draft.type)}
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-xs text-gray-600">
-                    <span className="rounded-full bg-gray-100 px-2 py-1">
-                      Base: {behaviorTemplateLabel(draft, behavior, behaviorMap)}
-                    </span>
-                    <span className="rounded-full bg-gray-100 px-2 py-1">
-                      Compatible: {behaviorCompatibleLabel(draft.type)}
-                    </span>
-                    <span className="rounded-full bg-gray-100 px-2 py-1">
-                      Uses: {behaviorUsesCount(draft)}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className="text-xs text-gray-400">
-                    ID {config.behaviorId}
+            <div className="flex-1 overflow-y-auto flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">Custom Behaviors</h4>
+                  <span className="text-xs text-gray-500">
+                    {filteredCustomConfigs.length}/{customConfigs.length}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void duplicateBehavior(config.behaviorId)}
-                    disabled={duplicatingId === config.behaviorId}
-                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Duplicate
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void deleteBehavior(config.behaviorId)}
-                    disabled={deletingId === config.behaviorId}
-                    className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
                 </div>
+                {filteredCustomConfigs.length === 0 ? (
+                  <p className="text-xs text-gray-500">
+                    No custom behaviors match the current filter.
+                  </p>
+                ) : (
+                  filteredCustomConfigs.map((config) => {
+                    const behavior = behaviorMap.get(config.behaviorId);
+                    const isSelected = config.behaviorId === selectedBehaviorId;
+
+                    return (
+                      <button
+                        key={config.behaviorId}
+                        type="button"
+                        onClick={() => setSelectedBehaviorId(config.behaviorId)}
+                        className={`rounded border px-3 py-2 text-left transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/15 text-base-content shadow-sm ring-1 ring-primary/25"
+                            : "border-base-300 bg-base-100 hover:bg-base-300"
+                        }`}
+                      >
+                        <div className="font-medium text-sm">
+                          {getConfigDisplayName(config)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">
+                          {behaviorFamilyLabel(config.type)} •{" "}
+                          {behaviorTemplateLabel(config, behavior, behaviorMap)}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
 
-              {draft.type === "holdTap" && (
-                <HoldTapEditor
-                  behavior={behavior}
-                  draft={draft}
-                  options={sortedBehaviors}
-                  onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                />
-              )}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">Reconfigurations</h4>
+                  <span className="text-xs text-gray-500">
+                    {filteredReconfigurationConfigs.length}/{reconfigurationConfigs.length}
+                  </span>
+                </div>
+                {filteredReconfigurationConfigs.length === 0 ? (
+                  <p className="text-xs text-gray-500">
+                    No reconfigurations match the current filter.
+                  </p>
+                ) : (
+                  filteredReconfigurationConfigs.map((config) => {
+                    const behavior = behaviorMap.get(config.behaviorId);
+                    const isSelected = config.behaviorId === selectedBehaviorId;
 
-              {draft.type === "tapDance" && (
-                <TapDanceEditor
-                  draft={draft}
-                  behaviors={sortedBehaviors}
-                  layers={layers}
-                  onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                />
-              )}
+                    return (
+                      <button
+                        key={config.behaviorId}
+                        type="button"
+                        onClick={() => setSelectedBehaviorId(config.behaviorId)}
+                        className={`rounded border px-3 py-2 text-left transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/15 text-base-content shadow-sm ring-1 ring-primary/25"
+                            : "border-base-300 bg-base-100 hover:bg-base-300"
+                        }`}
+                      >
+                        <div className="font-medium text-sm">
+                          {getConfigDisplayName(config)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">
+                          {behaviorFamilyLabel(config.type)} •{" "}
+                          {behaviorTemplateLabel(config, behavior, behaviorMap)}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
 
-              {draft.type === "stickyKey" && (
-                <StickyKeyEditor
-                  behavior={behavior}
-                  draft={draft}
-                  options={sortedBehaviors}
-                  onChange={(nextDraft) => updateDraft(config.behaviorId, nextDraft)}
-                />
-              )}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold">Other Behaviors</h4>
+                  <span className="text-xs text-gray-500">
+                    {filteredOtherBehaviors.length}/{otherBehaviors.length}
+                  </span>
+                </div>
+                {filteredOtherBehaviors.length === 0 ? (
+                  <p className="text-xs text-gray-500">
+                    No other behaviors match the current filter.
+                  </p>
+                ) : (
+                  filteredOtherBehaviors.map((behavior) => {
+                    const isSelected = behavior.id === selectedBehaviorId;
 
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => void saveDraft(config.behaviorId)}
-                  disabled={
-                    savingId === config.behaviorId ||
-                    renamingId === config.behaviorId ||
-                    deletingId === config.behaviorId ||
-                    duplicatingId === config.behaviorId
-                  }
-                  className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  Apply Live
-                </button>
-                <button
-                  onClick={() => resetDraft(config.behaviorId)}
-                  disabled={
-                    savingId === config.behaviorId ||
-                    renamingId === config.behaviorId ||
-                    deletingId === config.behaviorId ||
-                    duplicatingId === config.behaviorId
-                  }
-                  className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-60"
-                >
-                  Reset
-                </button>
+                    return (
+                      <button
+                        key={behavior.id}
+                        type="button"
+                        onClick={() => setSelectedBehaviorId(behavior.id)}
+                        className={`rounded border px-3 py-2 text-left transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/15 text-base-content shadow-sm ring-1 ring-primary/25"
+                            : "border-base-300 bg-base-100 hover:bg-base-300"
+                        }`}
+                      >
+                        <div className="font-medium text-sm">
+                          {getBehaviorLabel(behavior)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">
+                          Read-only • {describeBehaviorParameterFlow(behavior.metadata)}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
-          );
-        })}
-        </>
+          </div>
+
+          {selectedConfig ? (
+            renderConfigEditor(
+              selectedConfig,
+              behaviorMap.get(selectedConfig.behaviorId)?.isUserDefined
+                ? "custom"
+                : "reconfiguration"
+            )
+          ) : (
+            selectedBehavior ? (
+              <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                      Read-Only Behavior
+                    </span>
+                    <span className="text-xs text-gray-400">ID {selectedBehavior.id}</span>
+                  </div>
+                  <h3 className="text-lg font-semibold">
+                    {getBehaviorLabel(selectedBehavior)}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    This behavior exists on the keyboard, but the current firmware does not expose
+                    a live runtime config surface for it yet.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+                  <span className="rounded-full bg-base-200 px-2 py-1">
+                    Parameters: {describeBehaviorParameterFlow(selectedBehavior.metadata)}
+                  </span>
+                  <span className="rounded-full bg-base-200 px-2 py-1">
+                    Live Editing: Not Available
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-base-300 bg-base-100 shadow-sm p-4 text-sm text-gray-500">
+                {visibleConfigs.length === 0 && filteredOtherBehaviors.length === 0
+                  ? "No behaviors match the current filter."
+                  : "Pick a behavior from the list to inspect it."}
+              </div>
+            )
+          )}
+        </div>
       )}
     </div>
   );

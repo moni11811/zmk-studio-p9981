@@ -375,8 +375,10 @@ static int a320_init(const struct device *dev) {
     gpio_pin_configure(motion_gpio_dev, MOTION_GPIO_PIN, GPIO_INPUT | GPIO_PULL_UP);
 
     data->dev = dev;
+    touched = false;
 
     k_work_init_delayable(&data->poll_work, a320_poll_work_handler);
+
     k_work_schedule(&data->poll_work, K_MSEC(runtime_poll_interval_ms));
 
     return 0;

@@ -44,8 +44,6 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #define BLUETOOTH_SETTINGS_PATH SETTINGS_SUBTREE "/bluetooth"
 #define POWER_SETTINGS_PATH SETTINGS_SUBTREE "/power"
 #define SLEEP_SETTINGS_PATH SETTINGS_SUBTREE "/sleep"
-#define TRACKPAD_SETTINGS_SAVE_DELAY_MS 500
-
 #if defined(CONFIG_BT_CTLR_TX_PWR_DBM)
 #define TX_POWER_BOOST_ENABLED (CONFIG_BT_CTLR_TX_PWR_DBM >= 8)
 #else
@@ -254,10 +252,6 @@ static void trackpad_settings_save_work_handler(struct k_work *work) {
     }
 }
 
-static void schedule_trackpad_settings_save(void) {
-    k_work_reschedule(&trackpad_settings_save_work, K_MSEC(TRACKPAD_SETTINGS_SAVE_DELAY_MS));
-}
-
 static int save_backlight_settings(void) {
 #if IS_ENABLED(CONFIG_SETTINGS)
     return settings_save_one(BACKLIGHT_SETTINGS_PATH, &backlight_cfg, sizeof(backlight_cfg));
@@ -394,6 +388,7 @@ static void fill_trackpad_config(zmk_settings_TrackpadConfig *resp) {
     trackpad_cfg.precision_mode_enabled = zmk_bbp9981_trackpad_get_precision_mode_enabled();
     trackpad_cfg.scroll_mode_switch_enabled =
         zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled();
+    trackpad_cfg.scroll_profile = zmk_bbp9981_trackpad_get_scroll_profile();
 
     *resp = (zmk_settings_TrackpadConfig)zmk_settings_TrackpadConfig_init_zero;
     resp->enabled = trackpad_cfg.enabled;
@@ -596,7 +591,9 @@ static zmk_studio_Response set_trackpad_config(const zmk_studio_Request *req) {
     trackpad_cfg.scroll_profile = config->scroll_profile;
 
     apply_trackpad_runtime();
-    schedule_trackpad_settings_save();
+    if (save_trackpad_settings() < 0) {
+        LOG_WRN("Failed to persist trackpad settings");
+    }
     emit_trackpad_config_changed();
 
     return SETTINGS_RESPONSE(set_trackpad_config,
@@ -746,18 +743,18 @@ static zmk_studio_Response set_power_config(const zmk_studio_Request *req) {
 
     bool current_ext_power_enabled = ext_power_is_enabled();
     if (config->ext_power_enabled != current_ext_power_enabled) {
+        if (!config->ext_power_enabled) {
+            LOG_WRN("Rejecting ext-power disable request to protect battery boot reliability");
+            return SETTINGS_RESPONSE(
+                set_power_config, zmk_settings_SetConfigResponseCode_SET_CONFIG_ERR_INVALID);
+        }
+
         if (!ext_power_dev || !device_is_ready(ext_power_dev)) {
             return SETTINGS_RESPONSE(
                 set_power_config, zmk_settings_SetConfigResponseCode_SET_CONFIG_ERR_INVALID);
         }
 
-        if (!config->ext_power_enabled && !zmk_usb_is_powered()) {
-            return SETTINGS_RESPONSE(
-                set_power_config, zmk_settings_SetConfigResponseCode_SET_CONFIG_ERR_INVALID);
-        }
-
-        int err = config->ext_power_enabled ? ext_power_enable(ext_power_dev)
-                                            : ext_power_disable(ext_power_dev);
+        int err = ext_power_enable(ext_power_dev);
         if (err < 0) {
             LOG_WRN("Failed to update ext power state: %d", err);
             return SETTINGS_RESPONSE(
@@ -821,8 +818,12 @@ static zmk_studio_Response set_sleep_config(const zmk_studio_Request *req) {
 
 static zmk_studio_Response power_off(const zmk_studio_Request *req) {
     (void)req;
+#if IS_ENABLED(CONFIG_ZMK_PM_SOFT_OFF)
     int err = zmk_pm_soft_off();
     return SETTINGS_RESPONSE(power_off, err == 0);
+#else
+    return SETTINGS_RESPONSE(power_off, false);
+#endif
 }
 
 static zmk_studio_Response select_bt_profile(const zmk_studio_Request *req) {

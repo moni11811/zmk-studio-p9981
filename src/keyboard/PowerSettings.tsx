@@ -14,7 +14,7 @@ const formatActivityState = (state: PowerConfig["activityState"]) => {
 };
 
 export const PowerSettings = () => {
-  const { config, loading, updateConfig, powerOff } = usePowerConfig();
+  const { config, loading, error, refresh, updateConfig, powerOff } = usePowerConfig();
 
   const updateField = useCallback(
     <K extends keyof PowerConfig>(field: K, value: PowerConfig[K]) => {
@@ -26,10 +26,53 @@ export const PowerSettings = () => {
     [config, updateConfig]
   );
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center p-8 text-gray-500">
         Loading power settings...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-amber-200 bg-amber-50 p-4">
+          <h2 className="text-lg font-bold text-amber-900">Power Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            The app could not load power settings from the keyboard.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">{error}</p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <div className="rounded border border-gray-200 bg-gray-50 p-4">
+          <h2 className="text-lg font-bold text-gray-900">Power Settings Unavailable</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            The keyboard did not return power settings for this session.
+          </p>
+          <button
+            onClick={() => {
+              void refresh();
+            }}
+            className="mt-3 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-100"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -115,19 +158,16 @@ export const PowerSettings = () => {
       </div>
 
       <div className="flex flex-col gap-3 border-t border-gray-200 pt-4">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={config.extPowerEnabled}
-            onChange={(e) => updateField("extPowerEnabled", e.target.checked)}
-            disabled={config.extPowerEnabled && !config.usbPowered}
-          />
-          <span className="font-medium">External Power Rail Enabled</span>
-        </label>
-        <p className="text-xs text-gray-500">
-          For safety, Studio only lets you turn the rail off while USB power is
-          present. On battery alone, use the soft-off action below instead.
-        </p>
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+          <div className="font-medium text-amber-900">External Power Rail</div>
+          <p className="mt-1 text-amber-800">
+            This rail is kept on for reliable battery boot on BB9981. Studio
+            now shows its status but does not let you disable it live.
+          </p>
+          <p className="mt-2 text-xs text-amber-700">
+            Current status: {config.extPowerEnabled ? "Enabled" : "Off unexpectedly"}
+          </p>
+        </div>
 
         <button
           onClick={() => {

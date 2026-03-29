@@ -8,7 +8,7 @@
   },
   "productName": "ZMK Studio",
   "mainBinaryName": "zmk-studio",
-  "version": "1.0.1",
+  "version": "1.7.0",
   "identifier": "dev.zmk.studio",
   "bundle": {
     "active": true,
@@ -38,7 +38,9 @@
     "resources": [],
     "shortDescription": "",
     "targets": "all",
-    "windows": {}
+    "windows": {
+      "signCommand": "signtool.exe sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib ..\\Microsoft.Trusted.Signing.Client\\bin\\x64\\Azure.CodeSigning.Dlib.dll /dmdf trusted-signing-metadata.json %1"
+    }
   },
   "plugins": {
     "cli": {

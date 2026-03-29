@@ -71,6 +71,7 @@ RC(3,0)          RC(3,2)             RC(3,4)             RC(3,6)          RC(3,8
 
     kscan0: kscan {
         compatible = "zmk,kscan-gpio-matrix";
+        wakeup-source;
         diode-direction = "col2row";
         row-gpios
             = <&gpio1 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
@@ -94,6 +95,12 @@ RC(3,0)          RC(3,2)             RC(3,4)             RC(3,6)          RC(3,8
             ;
     };
 
+    soft_off_wakers {
+        compatible = "zmk,soft-off-wakeup-sources";
+        status = "okay";
+        wakeup-sources = <&kscan0>;
+    };
+
     leds {
         compatible = "gpio-leds";
         blue_led: led_0 {
@@ -105,6 +112,7 @@ RC(3,0)          RC(3,2)             RC(3,4)             RC(3,6)          RC(3,8
     EXT_POWER {
         compatible = "zmk,ext-power-generic";
         control-gpios = <&gpio0 13 GPIO_ACTIVE_LOW>;
+        boot-on;
         init-delay-ms = <100>;
     };
 

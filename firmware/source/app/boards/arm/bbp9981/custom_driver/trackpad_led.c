@@ -39,6 +39,8 @@ static const struct device *const led_dev = DEVICE_DT_GET(DT_CHOSEN(zmk_trackpad
 
 #define ANIMATION_INTERVAL_MS 20
 #define POLLING_INTERVAL_MS 5
+#define IDLE_POLL_INTERVAL_MS 50
+#define STARTUP_POLL_DELAY_MS 500
 #define AUTO_OFF_DELAY_MS 5000
 
 #define FLASH_ON_MS 100
@@ -53,6 +55,7 @@ static bool capslock_on = false;
 static bool touch_active = false;
 static bool animation_increasing = true;
 static uint8_t brightness = BRT_MIN;
+static int16_t last_applied_brightness = -1;
 
 static uint8_t last_valid_brt = BRT_MAX;
 static uint8_t last_backlight_brt = 0;
@@ -61,11 +64,16 @@ static bool keyboard_active = false;
 
 static bool usb_flash_state = false;
 static bool usb_mode = false;
-static bool led_globally_enabled = true;
+static bool led_globally_enabled = false;
 static uint32_t led_auto_off_delay_ms = AUTO_OFF_DELAY_MS;
 static uint8_t usb_power_mode = ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF;
+static bool trackpad_led_ready = false;
 
 static void set_led_brightness(uint8_t level) {
+    if (last_applied_brightness == level) {
+        return;
+    }
+
     if (!device_is_ready(led_dev)) {
         LOG_ERR("LED device not ready");
         return;
@@ -76,6 +84,25 @@ static void set_led_brightness(uint8_t level) {
             LOG_ERR("Failed to set LED[%d] brightness: %d", i, err);
         }
     }
+
+    last_applied_brightness = level;
+}
+
+static bool trackpad_led_polling_needed(void) {
+    return led_globally_enabled || usb_power_mode != ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF || usb_mode;
+}
+
+static void schedule_polling(k_timeout_t delay) {
+    if (!trackpad_led_ready) {
+        return;
+    }
+
+    if (!trackpad_led_polling_needed()) {
+        k_work_cancel_delayable(&polling_work);
+        return;
+    }
+
+    k_work_reschedule(&polling_work, delay);
 }
 
 static void usb_flash_work_handler(struct k_work *work) {
@@ -123,18 +150,37 @@ static void animation_work_handler(struct k_work *work) {
 static void polling_work_handler(struct k_work *work) {
     bool usb_power_active =
         zmk_usb_is_powered() && usb_power_mode != ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF;
-    bool current_capslock = zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled() &&
-                            (zmk_hid_indicators_get_current_profile() & HID_INDICATORS_CAPS_LOCK);
-    bool current_touch = tp_is_touched();
-    bool current_active = (zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
-    uint8_t current_brt = zmk_backlight_get_brt();
-    bool current_backlight_on = zmk_backlight_is_on();
+    bool current_capslock = false;
+    bool current_touch = false;
+    bool current_active = false;
+    uint8_t current_brt = 0;
+    bool current_backlight_on = false;
+    uint32_t next_poll_interval_ms = IDLE_POLL_INTERVAL_MS;
+
+    if (!trackpad_led_polling_needed()) {
+        usb_mode = false;
+        touch_active = false;
+        manual_override = false;
+        k_work_cancel_delayable(&animation_work);
+        k_work_cancel_delayable(&auto_off_work);
+        k_work_cancel_delayable(&usb_flash_work);
+        set_led_brightness(0);
+        return;
+    }
+
+    current_capslock = zmk_bbp9981_trackpad_get_scroll_mode_switch_enabled() &&
+                       (zmk_hid_indicators_get_current_profile() & HID_INDICATORS_CAPS_LOCK);
+    current_touch = tp_is_touched();
+    current_active = (zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
+    current_brt = zmk_backlight_get_brt();
+    current_backlight_on = zmk_backlight_is_on();
 
     if (!led_globally_enabled) {
         touch_active = false;
         manual_override = false;
         set_led_brightness(0);
-        k_work_reschedule(&polling_work, K_MSEC(POLLING_INTERVAL_MS));
+        next_poll_interval_ms = usb_power_active ? POLLING_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
+        k_work_reschedule(&polling_work, K_MSEC(next_poll_interval_ms));
         return;
     }
 
@@ -246,7 +292,11 @@ static void polling_work_handler(struct k_work *work) {
         }
     }
 
-    k_work_reschedule(&polling_work, K_MSEC(POLLING_INTERVAL_MS));
+    if (capslock_on || current_touch || touch_active || manual_override) {
+        next_poll_interval_ms = POLLING_INTERVAL_MS;
+    }
+
+    k_work_reschedule(&polling_work, K_MSEC(next_poll_interval_ms));
 }
 
 uint8_t indicator_tp_get_last_valid_brightness(void) { return last_valid_brt; }
@@ -255,20 +305,33 @@ bool zmk_trackpad_led_get_enabled(void) { return led_globally_enabled; }
 void zmk_trackpad_led_set_enabled(bool enabled) {
     led_globally_enabled = enabled;
 
-    if (!enabled) {
-        k_work_cancel_delayable(&animation_work);
-        k_work_cancel_delayable(&auto_off_work);
-        set_led_brightness(0);
+    if (!trackpad_led_ready) {
         return;
     }
 
-    k_work_reschedule(&polling_work, K_NO_WAIT);
+    if (!enabled) {
+        k_work_cancel_delayable(&animation_work);
+        k_work_cancel_delayable(&auto_off_work);
+        if (usb_power_mode == ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF) {
+            usb_mode = false;
+            k_work_cancel_delayable(&usb_flash_work);
+            set_led_brightness(0);
+            k_work_cancel_delayable(&polling_work);
+        } else {
+            schedule_polling(K_NO_WAIT);
+        }
+        return;
+    }
+
+    schedule_polling(K_NO_WAIT);
 }
 
 void zmk_trackpad_led_set_idle_timeout_ms(uint32_t timeout_ms) {
     if (timeout_ms == 0) {
         led_auto_off_delay_ms = 0;
-        k_work_cancel_delayable(&auto_off_work);
+        if (trackpad_led_ready) {
+            k_work_cancel_delayable(&auto_off_work);
+        }
         return;
     }
 
@@ -286,8 +349,18 @@ void zmk_trackpad_led_set_usb_power_mode(uint8_t mode) {
         break;
     }
 
+    if (!trackpad_led_ready) {
+        return;
+    }
+
     if (!usb_mode) {
-        k_work_reschedule(&polling_work, K_NO_WAIT);
+        if (usb_power_mode == ZMK_TRACKPAD_LED_USB_POWER_MODE_OFF && !led_globally_enabled) {
+            k_work_cancel_delayable(&polling_work);
+            set_led_brightness(0);
+            return;
+        }
+
+        schedule_polling(K_NO_WAIT);
         return;
     }
 
@@ -301,6 +374,9 @@ void zmk_trackpad_led_set_usb_power_mode(uint8_t mode) {
         usb_mode = false;
         k_work_cancel_delayable(&usb_flash_work);
         set_led_brightness(0);
+        if (!led_globally_enabled) {
+            k_work_cancel_delayable(&polling_work);
+        }
     }
 }
 
@@ -312,7 +388,6 @@ static int indicator_tp_init(void) {
         return -ENODEV;
     }
 
-    set_led_brightness(0);
     usb_mode = false;
     usb_flash_state = false;
     last_backlight_brt = zmk_backlight_get_brt();
@@ -323,7 +398,12 @@ static int indicator_tp_init(void) {
     k_work_init_delayable(&auto_off_work, auto_off_work_handler);
     k_work_init_delayable(&usb_flash_work, usb_flash_work_handler);
 
-    k_work_reschedule(&polling_work, K_NO_WAIT);
+    trackpad_led_ready = true;
+    set_led_brightness(0);
+
+    if (trackpad_led_polling_needed()) {
+        k_work_reschedule(&polling_work, K_MSEC(STARTUP_POLL_DELAY_MS));
+    }
     return 0;
 }
 
