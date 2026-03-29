@@ -90,6 +90,7 @@ This repo builds on:
 
 - [zmkfirmware/zmk-studio](https://github.com/zmkfirmware/zmk-studio)
 - [zmkfirmware/zmk](https://github.com/zmkfirmware/zmk)
+- [ZitaoTech/9981_BLE_USB_Keyboard_Pro](https://github.com/ZitaoTech/9981_BLE_USB_Keyboard_Pro)
 
 Licensing:
 
