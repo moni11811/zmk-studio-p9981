@@ -128,12 +128,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
+          mapfile -t release_files < <(find dist-artifacts -type f \
+            \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.msi' -o -name '*.exe' -o -name 'zmk.uf2' \) \
+            | sort)
+
+          if [ "${#release_files[@]}" -eq 0 ]; then
+            echo "No release files found"
+            exit 1
+          fi
+
           gh release upload "$RELEASE_TAG" \
-            dist-artifacts/macos/**/*.dmg \
-            dist-artifacts/linux/**/*.AppImage \
-            dist-artifacts/linux/**/*.deb \
-            dist-artifacts/windows/**/*.msi \
-            dist-artifacts/windows/**/*.exe \
-            dist-artifacts/firmware/zmk.uf2 \
+            "${release_files[@]}" \
             --repo "${{ github.repository }}" \
             --clobber
