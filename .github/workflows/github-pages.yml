@@ -46,7 +46,6 @@ jobs:
 
   deploy-web:
     needs: build-web
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
