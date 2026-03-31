@@ -20,6 +20,9 @@ jobs:
           - platform: "macos-latest"
             name: macos
             args: "--target universal-apple-darwin"
+          - platform: "ubuntu-24.04"
+            name: linux
+            args: ""
           - platform: "windows-latest"
             name: windows
             args: ""
@@ -27,6 +30,17 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libudev-dev \
+            patchelf
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -68,6 +82,8 @@ jobs:
           if-no-files-found: error
           path: |
             src-tauri/target/*/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.AppImage
+            src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
 
@@ -90,6 +106,12 @@ jobs:
           name: zmk-studio-windows
           path: dist-artifacts/windows
 
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zmk-studio-linux
+          path: dist-artifacts/linux
+
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,6 +119,8 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" \
             dist-artifacts/macos/**/*.dmg \
+            dist-artifacts/linux/**/*.AppImage \
+            dist-artifacts/linux/**/*.deb \
             dist-artifacts/windows/**/*.msi \
             dist-artifacts/windows/**/*.exe \
             --repo "${{ github.repository }}" \
