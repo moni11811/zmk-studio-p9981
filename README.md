@@ -1,159 +1,185 @@
-# ZMK Studio P9981
+# BB9981 ZMK Studio
 
-Public, sanitized fork of ZMK Studio for the BBP9981 / P9981 keyboard family.
+Cross-platform BB9981 desktop and web configuration app, based on ZMK Studio and extended for BB9981-specific firmware, settings, profiles, and flashing workflows.
 
-This fork is focused on making the BBP9981 usable with a desktop Studio app and matching firmware, while keeping the public repository safe to share.
+## Current Release Line
 
-## Keep My Robots Fed
+- Current release tag: `beta-v2.0.1`
+- GitHub releases: [moni11811/zmk-studio-p9981 releases](https://github.com/moni11811/zmk-studio-p9981/releases)
 
-If this fork saves you time and you want to keep my robots fed:
+This repo now serves as the unified public release home for:
 
-![Keep my robots fed](.github/assets/keep-my-robots-fed.png)
+- macOS app builds
+- Windows app builds
+- Linux app builds
+- matching BB9981 firmware UF2
 
-This repository is intentionally trimmed down for sharing:
+## Platforms
 
-- the ZMK Studio app source is at the repository root
-- the BBP9981 firmware source slice is under `firmware/source/`
-- a prebuilt firmware image is included at `firmware/releases/bbp9981-zmk.uf2`
+Release assets are intended to include:
 
-## What You Get
+- macOS `.dmg`
+- Windows `.msi`
+- Windows setup `.exe`
+- Linux `.deb`
+- Linux `.AppImage`
+- matching `zmk.uf2`
 
-- a BBP9981-focused ZMK Studio desktop app
-- matching BBP9981 firmware artifacts and overlay source
-- live settings support for trackpad, lighting, Bluetooth, sleep, and power controls
-- live editing for supported runtime behavior configuration
-- a sanitized public source tree without local-machine-only development baggage
+## Web Version
 
-## What Was Removed
+A browser build can also be served from GitHub Pages.
 
-This public repo does not include:
+What the web version is good for:
 
-- local build output such as `node_modules`, `dist`, or `src-tauri/target`
-- machine-specific keymap search logic tied to one filesystem layout
-- prebuilt app binaries committed into the repository tree
+- viewing and editing supported app data in the browser
+- using browser-supported transport paths such as Web Serial where available
+- lightweight access without installing the desktop shell
 
-The repository tree stays source-only. Public desktop binaries are published as GitHub Release assets built from this sanitized repo on GitHub-hosted runners, so they do not carry local workspace paths from the original development machine. The firmware UF2 is also included in `firmware/releases/` for convenience.
+Important limitations of the web build:
 
-## App
+- it does not include Tauri-native transport features
+- it does not include native flashing
+- transport support depends on browser and platform support
+- browser BLE support is more limited than the packaged desktop app
 
-The app source at the repository root contains the BBP9981-focused Studio changes, including:
+## What This Fork Adds
 
-- live keymap editing
-- live device settings for BBP9981-specific controls
-- trackpad tuning, scroll mode/profile controls, and lighting controls
-- Bluetooth profile management
-- sleep, idle, battery, and power controls
-- live behavior editing for supported runtime-configurable behaviors
-- macro and combo editing
-- a vendored RPC client package under `vendor/zmk-studio-ts-client` so the repo builds without relying on patched `node_modules`
+Compared with upstream ZMK Studio, this BB9981 fork adds:
 
-## Screenshots
+- BB9981-specific settings panels for Trackpad, Backlight, Power, Sleep, and Bluetooth
+- extended runtime RPC support for BB9981 device settings
+- live profile management with SubProfiles
+- profile templates stored in Studio, not on the keyboard
+- keymap copy and paste flows in the editor
+- built-in firmware flashing from the app in wired USB mode
+- unified public release packaging for app and firmware
 
-### Keymap
+## SubProfiles
 
-<p align="center">
-  <img src="APP/keymap-default-layer.png" alt="Default layer keymap" width="32%" />
-  <img src="APP/keymap-layer-2.png" alt="Layer 2 keymap" width="32%" />
-  <img src="APP/keymap-layer-3.png" alt="Layer 3 keymap" width="32%" />
-</p>
+The keyboard supports up to 3 live on-device SubProfiles.
 
-### Settings
+Each live SubProfile can carry:
 
-<p align="center">
-  <img src="APP/settings-trackpad.png" alt="Trackpad settings" width="32%" />
-  <img src="APP/settings-backlight.png" alt="Backlight settings" width="32%" />
-  <img src="APP/settings-bluetooth.png" alt="Bluetooth settings" width="32%" />
-</p>
+- its own keymap layers
+- its own profile-scoped BB9981 settings
 
-<p align="center">
-  <img src="APP/settings-battery.png" alt="Battery settings" width="32%" />
-  <img src="APP/settings-sleep-idle.png" alt="Sleep and idle settings" width="32%" />
-  <img src="APP/settings-macros.png" alt="Macro settings" width="32%" />
-</p>
+Studio also supports Profile Templates:
 
-<p align="center">
-  <img src="APP/settings-combos.png" alt="Combo settings" width="32%" />
-</p>
+- templates are stored in Studio on the computer
+- templates are not stored on the keyboard
+- templates can be applied into one of the 3 live SubProfile slots
 
-### Build The App
+This gives the keyboard:
 
-Requirements:
+- 3 active, switchable on-device profiles
+- unlimited offline template storage in Studio
 
-- Node.js 20+
-- Rust toolchain
-- Tauri 2 build prerequisites for your platform
+## Flashing
 
-Build commands:
+The app bundles a matching BB9981 firmware image and can flash it in wired USB mode.
 
-```bash
-npm install
-npm run build
-```
+Current intended behavior:
 
-For a desktop app package:
+- flashing is available only in wired USB mode
+- the latest bundled firmware is shipped inside the app
+- the app attempts to automate bootloader entry before copying the UF2
 
-```bash
-npm run tauri build
-```
+## Installation
 
-For public binaries, prefer the GitHub Releases page instead of local build output.
+### macOS
 
-## Firmware
+Download the `.dmg` from the releases page and install `ZMK Studio.app`.
 
-`firmware/source/` is a minimal source export of the BBP9981 firmware work. It is not a full ZMK checkout. Instead, it mirrors the relative paths of the files that were changed or added on top of upstream ZMK so they can be overlaid onto a matching ZMK tree.
+### Windows
 
-Included firmware material:
+Download either:
 
-- BBP9981 board files and custom drivers
-- Studio transport and subsystem changes
-- runtime settings support for trackpad, backlight, Bluetooth, sleep, and power
-- runtime-editable behavior support
-- the updated Studio behavior protobuf files
-- a prebuilt UF2 in `firmware/releases/`
+- the `.msi`
+- or the setup `.exe`
 
-### Flash The Included Firmware
+### Linux
 
-Use:
+Download either:
 
-```text
-firmware/releases/bbp9981-zmk.uf2
-```
+- the `.deb`
+- or the `.AppImage`
 
-SHA-256:
+### Firmware
 
-```text
-d026a3a3e59a3f36d7bdae62eee7e25efa3d0760b78c55298d91af434795d131
-```
+Download `zmk.uf2` from the same release page and flash it to the keyboard if needed.
 
-If you are packaging a fresh app binary from this source and want to publish that binary, do a final strings/path check on the produced executable before distributing it.
+## Connection Modes
 
-## Repo Layout
+The packaged desktop app is designed around:
 
-- `APP/`: screenshots used in this README
-- `firmware/releases/`: ready-to-flash firmware artifacts and checksums
-- `firmware/source/`: BBP9981-specific firmware overlay files
-- `src/`: app frontend source
-- `src-tauri/`: desktop shell and native transport layer
-- `vendor/zmk-studio-ts-client/`: vendored client patches needed by this fork
+- `USB Wired`
+- `Bluetooth`
 
-## Releases
+Wired USB is preferred for:
 
-The published `v1.7` release contains:
+- recovery
+- firmware flashing
+- deterministic debugging
 
-- a macOS DMG built from this sanitized public repo
-- the matching BBP9981 firmware UF2
-- `SHA256SUMS.txt` for the release assets
+Bluetooth is preferred for:
+
+- day-to-day live use
+- profile switching
+- runtime adjustment without cable dependency
+
+## Release Automation
+
+GitHub Actions now aims to provide a resilient source-release pipeline:
+
+- when a source-code release is published, the workflow builds macOS, Windows, and Linux artifacts
+- those artifacts are uploaded to the GitHub release automatically
+- a GitHub Pages workflow can publish the web version from the same repo
+
+## Version History
+
+### v0 -> v1
+
+This was the largest architectural jump in the project.
+
+- upstream ZMK Studio became a BB9981-focused fork
+- BB9981 board and firmware integration were added
+- custom BB9981 hardware logic and drivers were added
+- firmware-side Studio subsystems were added for settings, behaviors, macros, combos, and keymap runtime editing
+- BB9981-specific protobuf and RPC extensions were added
+- Studio gained BB9981-specific settings and runtime control flows
+- sanitized public release packaging was established
+
+### v1 -> v1.0.1
+
+- refined the first public fork release
+- tightened sanitized release packaging
+- improved public presentation and docs
+
+### v1.0.1 -> v1.7
+
+- focused on stabilization
+- improved board configuration and runtime reliability
+- improved trackpad LED startup behavior
+- refined settings, transport, and RPC behavior
+
+### v1.7 -> Beta Version 2
+
+- established the current BB9981 release line
+- moved toward a profile-centric workflow with SubProfiles and templates
+- unified public downloads around the app repo release page
+
+### Beta Version 2 -> Beta Version 2.0.1
+
+- added resilient macOS and Windows release automation
+- added Linux release automation
+- added GitHub Pages web deployment support
+- aligned documentation with the new cross-platform distribution model
 
 ## Upstream
 
-This repo builds on:
+This fork builds on:
 
 - [zmkfirmware/zmk-studio](https://github.com/zmkfirmware/zmk-studio)
 - [zmkfirmware/zmk](https://github.com/zmkfirmware/zmk)
 - [ZitaoTech/9981_BLE_USB_Keyboard_Pro](https://github.com/ZitaoTech/9981_BLE_USB_Keyboard_Pro)
 - [ZitaoTech/zmk-config-9981-pro](https://github.com/ZitaoTech/zmk-config-9981-pro)
-
-Licensing:
-
-- app source remains under the repository `LICENSE`
-- included firmware source slice is derived from ZMK and includes `firmware/LICENSE.zmk`
