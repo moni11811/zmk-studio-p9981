@@ -5,10 +5,14 @@ on:
   release:
     types: [published]
 
+concurrency:
+  group: tauri-build-${{ github.event_name }}-${{ github.event.release.tag_name || github.ref || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
-  publish-tauri:
+  build-tauri:
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -24,23 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get release
-        id: get_release
-        if: github.event_name == 'release'
-        uses: bruceadams/get-release@v1.3.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: setup node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: "npm" # Set this to npm, yarn or pnpm.
+          cache: "npm"
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable # Set this to dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -57,17 +53,51 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_HOME: ${{ runner.temp }}/cargo-home
           RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/workspace
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          releaseId: ${{ steps.get_release.outputs.id }}
           args: ${{ matrix.args }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: zmk-studio-${{ matrix.name }}
+          if-no-files-found: error
           path: |
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.AppImage
             src-tauri/target/*/release/bundle/**/*.dmg
-            src-tauri/target/*/release/bundle/**/*.app
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
+
+  publish-release:
+    if: github.event_name == 'release'
+    needs: build-tauri
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zmk-studio-macos
+          path: dist-artifacts/macos
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zmk-studio-windows
+          path: dist-artifacts/windows
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist-artifacts/macos/**/*.dmg \
+            dist-artifacts/windows/**/*.msi \
+            dist-artifacts/windows/**/*.exe \
+            --repo "${{ github.repository }}" \
+            --clobber
