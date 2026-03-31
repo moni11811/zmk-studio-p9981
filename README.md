@@ -60,6 +60,35 @@ Compared with upstream ZMK Studio, this BB9981 fork adds:
 - built-in firmware flashing from the app in wired USB mode
 - unified public release packaging for app and firmware
 
+## Firmware Compatibility
+
+Most of the BB9981-specific settings and management features require the matching BB9981 firmware release, not the older `v0` firmware baseline.
+
+Features that require newer BB9981 firmware include:
+
+- Trackpad settings
+- Backlight settings
+- Bluetooth settings
+- Power settings
+- Sleep settings
+- SubProfiles
+- profile switching and naming
+- profile import and export
+- profile templates applied into live device slots
+- built-in firmware flashing workflow support
+
+If the keyboard is still on firmware `v0`, Studio can still be useful for the base ZMK Studio feature set:
+
+- keymap editing
+- macros
+- combos
+- supported behavior editing that comes from the base Studio/firmware path
+
+In short:
+
+- most BB9981 settings require newer firmware
+- firmware `v0` is mainly for the baseline editing flows, not the full BB9981 settings stack
+
 ## SubProfiles
 
 The keyboard supports up to 3 live on-device SubProfiles.
