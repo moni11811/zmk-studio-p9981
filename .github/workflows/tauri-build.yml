@@ -2,6 +2,11 @@ name: "tauri-build"
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to upload assets to"
+        required: false
+        type: string
   release:
     types: [published]
 
@@ -67,12 +72,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_HOME: ${{ runner.temp }}/cargo-home
           RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/workspace
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: ${{ matrix.args }}
 
@@ -88,12 +87,14 @@ jobs:
             src-tauri/target/release/bundle/**/*.exe
 
   publish-release:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: build-tauri
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
@@ -112,10 +113,15 @@ jobs:
           name: zmk-studio-linux
           path: dist-artifacts/linux
 
+      - name: Stage bundled firmware
+        run: |
+          mkdir -p dist-artifacts/firmware
+          cp "src-tauri/resources/firmware/latest/zmk.uf2" dist-artifacts/firmware/zmk.uf2
+
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
           gh release upload "$RELEASE_TAG" \
             dist-artifacts/macos/**/*.dmg \
@@ -123,5 +129,6 @@ jobs:
             dist-artifacts/linux/**/*.deb \
             dist-artifacts/windows/**/*.msi \
             dist-artifacts/windows/**/*.exe \
+            dist-artifacts/firmware/zmk.uf2 \
             --repo "${{ github.repository }}" \
             --clobber
