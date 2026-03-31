@@ -29,6 +29,11 @@ Release assets are intended to include:
 
 A browser build can also be served from GitHub Pages.
 
+The intended public web deployment is:
+
+- GitHub Pages from this repository
+- automatically deployed from `main`
+
 What the web version is good for:
 
 - viewing and editing supported app data in the browser
@@ -133,7 +138,7 @@ GitHub Actions now aims to provide a resilient source-release pipeline:
 
 - when a source-code release is published, the workflow builds macOS, Windows, and Linux artifacts
 - those artifacts are uploaded to the GitHub release automatically
-- a GitHub Pages workflow can publish the web version from the same repo
+- a GitHub Pages workflow publishes the web build from the same repo
 
 ## Version History
 
@@ -172,7 +177,7 @@ This was the largest architectural jump in the project.
 
 - added resilient macOS and Windows release automation
 - added Linux release automation
-- added GitHub Pages web deployment support
+- added automatic GitHub Pages web deployment support
 - aligned documentation with the new cross-platform distribution model
 
 ## Upstream
