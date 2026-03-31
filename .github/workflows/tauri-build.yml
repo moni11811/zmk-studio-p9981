@@ -113,10 +113,15 @@ jobs:
           name: zmk-studio-linux
           path: dist-artifacts/linux
 
-      - name: Stage bundled firmware
+      - name: Download latest firmware UF2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dist-artifacts/firmware
-          cp "src-tauri/resources/firmware/latest/zmk.uf2" dist-artifacts/firmware/zmk.uf2
+          gh release download \
+            --repo moni11811/BB9981-KEYMAP \
+            --pattern zmk.uf2 \
+            --dir dist-artifacts/firmware
 
       - name: Upload release assets
         env:
