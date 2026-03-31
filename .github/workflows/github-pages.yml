@@ -36,6 +36,7 @@ jobs:
         run: npm run build
 
       - name: configure pages
+        continue-on-error: true
         uses: actions/configure-pages@v5
 
       - name: upload pages artifact
@@ -45,6 +46,7 @@ jobs:
 
   deploy-web:
     needs: build-web
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
