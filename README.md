@@ -6,6 +6,7 @@ Cross-platform BB9981 desktop and web configuration app, based on ZMK Studio and
 
 - Current release tag: `beta-v2.0.1`
 - GitHub releases: [moni11811/zmk-studio-p9981 releases](https://github.com/moni11811/zmk-studio-p9981/releases)
+- Live web app: [moni11811.github.io/zmk-studio-p9981](https://moni11811.github.io/zmk-studio-p9981/)
 
 This repo now serves as the unified public release home for:
 
@@ -29,9 +30,9 @@ Release assets are intended to include:
 
 A browser build can also be served from GitHub Pages.
 
-The intended public web deployment is:
+The public web deployment is:
 
-- GitHub Pages from this repository
+- [moni11811.github.io/zmk-studio-p9981](https://moni11811.github.io/zmk-studio-p9981/)
 - automatically deployed from `main`
 
 What the web version is good for:
