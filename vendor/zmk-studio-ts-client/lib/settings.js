@@ -68,10 +68,12 @@ function createBaseBacklightConfig() {
         backlightEnabled: false,
         backlightBrightness: 0,
         backlightAutoOff: false,
-        idleTimeoutMs: 0,
+        backlightIdleTimeoutMs: 0,
         rgbEnabled: false,
         rgbBrightness: 0,
         rgbColor: "",
+        rgbAutoOff: false,
+        rgbIdleTimeoutMs: 0,
         trackpadLedEnabled: false,
         trackpadLedBrightness: 0,
     };
@@ -81,12 +83,14 @@ const BacklightConfig = {
         if (message.backlightEnabled === true) writer.uint32(8).bool(message.backlightEnabled);
         if (message.backlightBrightness !== 0) writer.uint32(16).uint32(message.backlightBrightness);
         if (message.backlightAutoOff === true) writer.uint32(24).bool(message.backlightAutoOff);
-        if (message.idleTimeoutMs !== 0) writer.uint32(32).uint32(message.idleTimeoutMs);
+        if (message.backlightIdleTimeoutMs !== 0) writer.uint32(32).uint32(message.backlightIdleTimeoutMs);
         if (message.rgbEnabled === true) writer.uint32(40).bool(message.rgbEnabled);
         if (message.rgbBrightness !== 0) writer.uint32(48).uint32(message.rgbBrightness);
         if (message.rgbColor !== "") writer.uint32(58).string(message.rgbColor);
         if (message.trackpadLedEnabled === true) writer.uint32(64).bool(message.trackpadLedEnabled);
         if (message.trackpadLedBrightness !== 0) writer.uint32(72).uint32(message.trackpadLedBrightness);
+        if (message.rgbAutoOff === true) writer.uint32(80).bool(message.rgbAutoOff);
+        if (message.rgbIdleTimeoutMs !== 0) writer.uint32(88).uint32(message.rgbIdleTimeoutMs);
         return writer;
     },
     decode(input, length) {
@@ -106,7 +110,7 @@ const BacklightConfig = {
                     message.backlightAutoOff = reader.bool();
                     continue;
                 case 4:
-                    message.idleTimeoutMs = reader.uint32();
+                    message.backlightIdleTimeoutMs = reader.uint32();
                     continue;
                 case 5:
                     message.rgbEnabled = reader.bool();
@@ -122,6 +126,12 @@ const BacklightConfig = {
                     continue;
                 case 9:
                     message.trackpadLedBrightness = reader.uint32();
+                    continue;
+                case 10:
+                    message.rgbAutoOff = reader.bool();
+                    continue;
+                case 11:
+                    message.rgbIdleTimeoutMs = reader.uint32();
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
@@ -170,7 +180,7 @@ const BtProfile = {
 };
 
 function createBaseBluetoothConfig() {
-    return { outputMode: "", activeProfile: 0, profiles: [], txPowerBoost: false };
+    return { outputMode: "", activeProfile: 0, profiles: [], txPowerBoost: false, activeOutputMode: 0 };
 }
 const BluetoothConfig = {
     encode(message, writer = _m0.Writer.create()) {
@@ -180,6 +190,7 @@ const BluetoothConfig = {
             BtProfile.encode(profile, writer.uint32(26).fork()).ldelim();
         }
         if (message.txPowerBoost === true) writer.uint32(32).bool(message.txPowerBoost);
+        if (message.activeOutputMode !== 0) writer.uint32(40).uint32(message.activeOutputMode);
         return writer;
     },
     decode(input, length) {
@@ -201,6 +212,9 @@ const BluetoothConfig = {
                 case 4:
                     message.txPowerBoost = reader.bool();
                     continue;
+                case 5:
+                    message.activeOutputMode = reader.uint32();
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
             reader.skipType(tag & 7);
@@ -217,6 +231,7 @@ function createBasePowerConfig() {
         batteryReportIntervalS: 0,
         activityState: 0,
         chargingLedMode: 0,
+        chargingLedSpeedMs: 0,
     };
 }
 const PowerConfig = {
@@ -227,6 +242,7 @@ const PowerConfig = {
         if (message.batteryReportIntervalS !== 0) writer.uint32(32).uint32(message.batteryReportIntervalS);
         if (message.activityState !== 0) writer.uint32(40).uint32(message.activityState);
         if (message.chargingLedMode !== 0) writer.uint32(48).uint32(message.chargingLedMode);
+        if (message.chargingLedSpeedMs !== 0) writer.uint32(56).uint32(message.chargingLedSpeedMs);
         return writer;
     },
     decode(input, length) {
@@ -253,6 +269,9 @@ const PowerConfig = {
                     continue;
                 case 6:
                     message.chargingLedMode = reader.uint32();
+                    continue;
+                case 7:
+                    message.chargingLedSpeedMs = reader.uint32();
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
@@ -301,6 +320,80 @@ const SleepConfig = {
                     continue;
                 case 5:
                     message.sleepWhileUsbPowered = reader.bool();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) break;
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+};
+
+function createBaseSubProfileSummary() {
+    return { index: 0, name: "", active: false, initialized: false };
+}
+const SubProfileSummary = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.index !== 0) writer.uint32(8).uint32(message.index);
+        if (message.name !== "") writer.uint32(18).string(message.name);
+        if (message.active === true) writer.uint32(24).bool(message.active);
+        if (message.initialized === true) writer.uint32(32).bool(message.initialized);
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        const message = createBaseSubProfileSummary();
+        let end = length === undefined ? reader.len : reader.pos + length;
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    message.index = reader.uint32();
+                    continue;
+                case 2:
+                    message.name = reader.string();
+                    continue;
+                case 3:
+                    message.active = reader.bool();
+                    continue;
+                case 4:
+                    message.initialized = reader.bool();
+                    continue;
+            }
+            if ((tag & 7) === 4 || tag === 0) break;
+            reader.skipType(tag & 7);
+        }
+        return message;
+    },
+};
+
+function createBaseSubProfileState() {
+    return { activeProfile: 0, profiles: [], switching: false };
+}
+const SubProfileState = {
+    encode(message, writer = _m0.Writer.create()) {
+        if (message.activeProfile !== 0) writer.uint32(8).uint32(message.activeProfile);
+        for (const profile of message.profiles) {
+            SubProfileSummary.encode(profile, writer.uint32(18).fork()).ldelim();
+        }
+        if (message.switching === true) writer.uint32(24).bool(message.switching);
+        return writer;
+    },
+    decode(input, length) {
+        const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+        const message = createBaseSubProfileState();
+        let end = length === undefined ? reader.len : reader.pos + length;
+        while (reader.pos < end) {
+            const tag = reader.uint32();
+            switch (tag >>> 3) {
+                case 1:
+                    message.activeProfile = reader.uint32();
+                    continue;
+                case 2:
+                    message.profiles.push(SubProfileSummary.decode(reader, reader.uint32()));
+                    continue;
+                case 3:
+                    message.switching = reader.bool();
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
@@ -399,6 +492,10 @@ function createBaseRequest() {
         powerOff: false,
         saveChanges: false,
         discardChanges: false,
+        getSubprofileState: false,
+        switchSubprofile: undefined,
+        renameSubprofile: undefined,
+        resetSubprofile: undefined,
     };
 }
 export const Request = {
@@ -435,6 +532,16 @@ export const Request = {
         if (message.powerOff === true) writer.uint32(128).bool(message.powerOff);
         if (message.saveChanges === true) writer.uint32(80).bool(message.saveChanges);
         if (message.discardChanges === true) writer.uint32(88).bool(message.discardChanges);
+        if (message.getSubprofileState === true) writer.uint32(136).bool(message.getSubprofileState);
+        if (message.switchSubprofile !== undefined) {
+            ProfileIndexRequest.encode(message.switchSubprofile, writer.uint32(146).fork()).ldelim();
+        }
+        if (message.renameSubprofile !== undefined) {
+            RenameBtProfileRequest.encode(message.renameSubprofile, writer.uint32(154).fork()).ldelim();
+        }
+        if (message.resetSubprofile !== undefined) {
+            ProfileIndexRequest.encode(message.resetSubprofile, writer.uint32(162).fork()).ldelim();
+        }
         return writer;
     },
     decode(input, length) {
@@ -492,6 +599,18 @@ export const Request = {
                 case 11:
                     message.discardChanges = reader.bool();
                     continue;
+                case 17:
+                    message.getSubprofileState = reader.bool();
+                    continue;
+                case 18:
+                    message.switchSubprofile = ProfileIndexRequest.decode(reader, reader.uint32());
+                    continue;
+                case 19:
+                    message.renameSubprofile = RenameBtProfileRequest.decode(reader, reader.uint32());
+                    continue;
+                case 20:
+                    message.resetSubprofile = ProfileIndexRequest.decode(reader, reader.uint32());
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
             reader.skipType(tag & 7);
@@ -518,6 +637,10 @@ function createBaseResponse() {
         powerOff: false,
         saveChanges: 0,
         discardChanges: false,
+        getSubprofileState: undefined,
+        switchSubprofile: 0,
+        renameSubprofile: false,
+        resetSubprofile: false,
     };
 }
 export const Response = {
@@ -548,6 +671,12 @@ export const Response = {
         if (message.powerOff === true) writer.uint32(128).bool(message.powerOff);
         if (message.saveChanges !== 0) writer.uint32(80).int32(message.saveChanges);
         if (message.discardChanges === true) writer.uint32(88).bool(message.discardChanges);
+        if (message.getSubprofileState !== undefined) {
+            SubProfileState.encode(message.getSubprofileState, writer.uint32(138).fork()).ldelim();
+        }
+        if (message.switchSubprofile !== 0) writer.uint32(144).int32(message.switchSubprofile);
+        if (message.renameSubprofile === true) writer.uint32(152).bool(message.renameSubprofile);
+        if (message.resetSubprofile === true) writer.uint32(160).bool(message.resetSubprofile);
         return writer;
     },
     decode(input, length) {
@@ -605,6 +734,18 @@ export const Response = {
                 case 11:
                     message.discardChanges = reader.bool();
                     continue;
+                case 17:
+                    message.getSubprofileState = SubProfileState.decode(reader, reader.uint32());
+                    continue;
+                case 18:
+                    message.switchSubprofile = reader.int32();
+                    continue;
+                case 19:
+                    message.renameSubprofile = reader.bool();
+                    continue;
+                case 20:
+                    message.resetSubprofile = reader.bool();
+                    continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;
             reader.skipType(tag & 7);
@@ -620,6 +761,7 @@ function createBaseNotification() {
         bluetoothConfigChanged: undefined,
         powerConfigChanged: undefined,
         sleepConfigChanged: undefined,
+        subprofileStateChanged: undefined,
     };
 }
 export const Notification = {
@@ -638,6 +780,9 @@ export const Notification = {
         }
         if (message.sleepConfigChanged !== undefined) {
             SleepConfig.encode(message.sleepConfigChanged, writer.uint32(42).fork()).ldelim();
+        }
+        if (message.subprofileStateChanged !== undefined) {
+            SubProfileState.encode(message.subprofileStateChanged, writer.uint32(50).fork()).ldelim();
         }
         return writer;
     },
@@ -662,6 +807,9 @@ export const Notification = {
                     continue;
                 case 5:
                     message.sleepConfigChanged = SleepConfig.decode(reader, reader.uint32());
+                    continue;
+                case 6:
+                    message.subprofileStateChanged = SubProfileState.decode(reader, reader.uint32());
                     continue;
             }
             if ((tag & 7) === 4 || tag === 0) break;

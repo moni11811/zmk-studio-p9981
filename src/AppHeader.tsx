@@ -18,18 +18,22 @@ import { GenericModal } from "./GenericModal";
 
 export interface AppHeaderProps {
   connectedDeviceLabel?: string;
+  showEditorActions?: boolean;
   onSave?: () => void | Promise<void>;
   onDiscard?: () => void | Promise<void>;
   onUndo?: () => Promise<void>;
   onRedo?: () => Promise<void>;
   onResetSettings?: () => void | Promise<void>;
   onDisconnect?: () => void | Promise<void>;
+  onFlashLatestFirmware?: () => void | Promise<void>;
+  canFlashLatestFirmware?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
 }
 
 export const AppHeader = ({
   connectedDeviceLabel,
+  showEditorActions = true,
   canRedo,
   canUndo,
   onRedo,
@@ -37,6 +41,8 @@ export const AppHeader = ({
   onSave,
   onDiscard,
   onDisconnect,
+  onFlashLatestFirmware,
+  canFlashLatestFirmware,
   onResetSettings,
 }: AppHeaderProps) => {
   const [showSettingsReset, setShowSettingsReset] = useState(false);
@@ -119,10 +125,19 @@ export const AppHeader = ({
             >
               Restore Stock Settings
             </MenuItem>
+            <MenuItem
+              className="px-2 py-1 hover:bg-base-200"
+              onAction={onFlashLatestFirmware}
+              isDisabled={!canFlashLatestFirmware}
+            >
+              Flash Latest Firmware (USB)
+            </MenuItem>
           </Menu>
         </Popover>
       </MenuTrigger>
       <div className="flex justify-end gap-1 px-2">
+        {showEditorActions && (
+          <>
         {onUndo && (
           <Tooltip label="Undo">
             <Button
@@ -164,6 +179,8 @@ export const AppHeader = ({
             <Trash2 className="inline-block w-4 mx-1" aria-label="Discard" />
           </Button>
         </Tooltip>
+          </>
+        )}
       </div>
     </header>
   );

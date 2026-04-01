@@ -1,93 +1,28 @@
 # BB9981 ZMK Studio
 
-Cross-platform BB9981 desktop and web configuration app, based on ZMK Studio and extended for BB9981-specific firmware, settings, profiles, and flashing workflows.
+Desktop configuration app for the BB9981 keyboard family, based on ZMK Studio and extended for BB9981-specific firmware, settings, profiles, and flashing workflows.
 
-## Current Release Line
+## Current Release
 
-- Current release tag: `beta-v2.0.1`
-- GitHub releases: [moni11811/zmk-studio-p9981 releases](https://github.com/moni11811/zmk-studio-p9981/releases)
-- Live web app: [moni11811.github.io/zmk-studio-p9981](https://moni11811.github.io/zmk-studio-p9981/)
+- App release: [Version 2.1](https://github.com/moni11811/zmk-studio-p9981/releases/tag/v2.1)
+- Firmware releases: [moni11811/BB9981-KEYMAP releases](https://github.com/moni11811/BB9981-KEYMAP/releases)
 
-This repo now serves as the unified public release home for:
+Primary assets:
 
-- macOS app builds
-- Windows app builds
-- Linux app builds
-- matching BB9981 firmware UF2
+- Download the packaged app and bundled assets from the [Version 2.1 release](https://github.com/moni11811/zmk-studio-p9981/releases/tag/v2.1).
+- Version 2.1 is the last public release of this fork.
 
-## Platforms
-
-Release assets are intended to include:
-
-- macOS `.dmg`
-- Windows `.msi`
-- Windows setup `.exe`
-- Linux `.deb`
-- Linux `.AppImage`
-- matching `zmk.uf2`
-
-## Web Version
-
-A browser build can also be served from GitHub Pages.
-
-The public web deployment is:
-
-- [moni11811.github.io/zmk-studio-p9981](https://moni11811.github.io/zmk-studio-p9981/)
-- automatically deployed from `main`
-
-What the web version is good for:
-
-- viewing and editing supported app data in the browser
-- using browser-supported transport paths such as Web Serial where available
-- lightweight access without installing the desktop shell
-
-Important limitations of the web build:
-
-- it does not include Tauri-native transport features
-- it does not include native flashing
-- transport support depends on browser and platform support
-- browser BLE support is more limited than the packaged desktop app
-
-## What This Fork Adds
+## What Makes This Fork Different
 
 Compared with upstream ZMK Studio, this BB9981 fork adds:
 
 - BB9981-specific settings panels for Trackpad, Backlight, Power, Sleep, and Bluetooth
-- extended runtime RPC support for BB9981 device settings
-- live profile management with SubProfiles
-- profile templates stored in Studio, not on the keyboard
-- keymap copy and paste flows in the editor
-- built-in firmware flashing from the app in wired USB mode
-- unified public release packaging for app and firmware
-
-## Firmware Compatibility
-
-Most of the BB9981-specific settings and management features require the matching BB9981 firmware release, not the older `v0` firmware baseline.
-
-Features that require newer BB9981 firmware include:
-
-- Trackpad settings
-- Backlight settings
-- Bluetooth settings
-- Power settings
-- Sleep settings
-- SubProfiles
-- profile switching and naming
-- profile import and export
-- profile templates applied into live device slots
-- built-in firmware flashing workflow support
-
-If the keyboard is still on firmware `v0`, Studio can still be useful for the base ZMK Studio feature set:
-
-- keymap editing
-- macros
-- combos
-- supported behavior editing that comes from the base Studio/firmware path
-
-In short:
-
-- most BB9981 settings require newer firmware
-- firmware `v0` is mainly for the baseline editing flows, not the full BB9981 settings stack
+- Extended runtime RPC support for BB9981 device settings
+- Live profile management with SubProfiles
+- Profile templates stored in Studio, not on the keyboard
+- Keymap copy and paste flows in the editor
+- Built-in firmware flashing from the app in wired USB mode
+- BB9981-oriented UX and release packaging
 
 ## SubProfiles
 
@@ -96,7 +31,7 @@ The keyboard supports up to 3 live on-device SubProfiles.
 Each live SubProfile can carry:
 
 - its own keymap layers
-- its own profile-scoped BB9981 settings
+- its own BB9981 profile-scoped settings
 
 Studio also supports Profile Templates:
 
@@ -109,112 +44,131 @@ This gives the keyboard:
 - 3 active, switchable on-device profiles
 - unlimited offline template storage in Studio
 
-## Flashing
+## Supported Workflows
 
-The app bundles a matching BB9981 firmware image and can flash it in wired USB mode.
+### Keymap Editing
 
-Current intended behavior:
+- edit key bindings live in Studio
+- copy and paste bindings in the keymap editor
+- switch between live SubProfiles
+- save template snapshots from the current active profile
+- apply templates into a live slot
 
-- flashing is available only in wired USB mode
-- the latest bundled firmware is shipped inside the app
-- the app attempts to automate bootloader entry before copying the UF2
+### Device Settings
+
+Profile-scoped settings live with the active SubProfile where supported.
+
+Global settings remain outside the SubProfile wrapper where appropriate.
+
+### Import and Export
+
+Studio supports:
+
+- SubProfile export
+- SubProfile import
+- Profile Template save and reuse
+
+On macOS, export and import use native file dialogs in the packaged app.
+
+### Firmware Flashing
+
+The app bundles the latest synced BB9981 firmware and can flash it in wired USB mode.
+
+Current flashing behavior:
+
+- available only when connected over wired USB
+- bundled firmware is shipped inside the app
+- flashing attempts bootloader mode automatically before copying the UF2
 
 ## Installation
 
 ### macOS
 
-Download the `.dmg` from the releases page and install `ZMK Studio.app`.
-
-### Windows
-
-Download either:
-
-- the `.msi`
-- or the setup `.exe`
-
-### Linux
-
-Download either:
-
-- the `.deb`
-- or the `.AppImage`
+1. Download the latest DMG from the app release page.
+2. Install `ZMK Studio.app`.
+3. Move the app to `/Applications` if you want macOS permissions to behave more consistently.
+4. Open the app and grant Bluetooth access when prompted.
 
 ### Firmware
 
-Download `zmk.uf2` from the same release page and flash it to the keyboard if needed.
+1. Download the latest `zmk.uf2` from the firmware release page.
+2. Put the keyboard into bootloader mode.
+3. Copy the UF2 onto the bootloader drive.
+
+If you are already connected over wired USB in the app, use the built-in flash flow.
 
 ## Connection Modes
 
-The packaged desktop app is designed around:
+The app is designed around two primary connection paths:
 
 - `USB Wired`
 - `Bluetooth`
 
 Wired USB is preferred for:
 
-- recovery
 - firmware flashing
-- deterministic debugging
+- recovery
+- more deterministic transport behavior during debugging
 
 Bluetooth is preferred for:
 
-- day-to-day live use
-- profile switching
-- runtime adjustment without cable dependency
+- normal day-to-day profile switching and live adjustments
 
-## Release Automation
+## Release Model
 
-GitHub Actions now aims to provide a resilient source-release pipeline:
+This project currently ships app and firmware separately.
 
-- when a source-code release is published, the workflow builds macOS, Windows, and Linux artifacts
-- those artifacts are uploaded to the GitHub release automatically
-- a GitHub Pages workflow publishes the web build from the same repo
+That means:
+
+- the desktop app has its own GitHub release
+- the firmware has its own GitHub release
+- the app bundles a matching firmware UF2 for convenience
 
 ## Version History
 
 ### v0 -> v1
 
-This was the largest architectural jump in the project.
+This was the biggest architectural jump in the project.
 
-- upstream ZMK Studio became a BB9981-focused fork
-- BB9981 board and firmware integration were added
-- custom BB9981 hardware logic and drivers were added
-- firmware-side Studio subsystems were added for settings, behaviors, macros, combos, and keymap runtime editing
-- BB9981-specific protobuf and RPC extensions were added
-- Studio gained BB9981-specific settings and runtime control flows
-- sanitized public release packaging was established
+- Upstream ZMK Studio became a BB9981-focused fork.
+- BB9981 board and firmware integration were added.
+- Custom BB9981 drivers and hardware logic were added.
+- Firmware-side Studio subsystems were added for settings, behaviors, macros, combos, and keymap runtime editing.
+- BB9981-specific protobuf and RPC extensions were added.
+- Studio gained BB9981 settings panels and control flows.
+- Sanitized public packaging and release assets were established.
 
 ### v1 -> v1.0.1
 
-- refined the first public fork release
-- tightened sanitized release packaging
-- improved public presentation and docs
+- tightened release packaging
+- cleaned up public presentation
+- improved docs and screenshots
 
 ### v1.0.1 -> v1.7
 
-- focused on stabilization
-- improved board configuration and runtime reliability
-- improved trackpad LED startup behavior
-- refined settings, transport, and RPC behavior
+- stabilization-focused release
+- improved board and runtime reliability
+- improved trackpad LED startup path
+- refined settings and RPC behavior
 
 ### v1.7 -> Beta Version 2
 
-- established the current BB9981 release line
-- moved toward a profile-centric workflow with SubProfiles and templates
-- unified public downloads around the app repo release page
+- split app and firmware releases
+- established the profile-centric release direction
+- expanded the Studio workflow around SubProfiles and templates
 
-### Beta Version 2 -> Beta Version 2.0.1
+## Development Notes
 
-- added resilient macOS and Windows release automation
-- added Linux release automation
-- added automatic GitHub Pages web deployment support
-- aligned documentation with the new cross-platform distribution model
+This repo is the app side of the BB9981 stack. The paired keyboard firmware is released separately.
 
-## Upstream
+The packaged app release also triggers cross-platform GitHub Actions builds, including Windows.
 
-This fork builds on:
+## Status
 
-- [zmkfirmware/zmk-studio](https://github.com/zmkfirmware/zmk-studio)
-- [zmkfirmware/zmk](https://github.com/zmkfirmware/zmk)
-- [ZitaoTech/9981_BLE_USB_Keyboard_Pro](https://github.com/ZitaoTech/9981_BLE_USB_Keyboard_Pro)
-- [ZitaoTech/zmk-config-9981-pro](https://github.com/ZitaoTech/zmk-config-9981-pro)
+Beta Version 2 is a beta release. The direction is:
+
+- reliability closer to mainstream commercial keyboards
+- customization depth closer to enthusiast keyboard tooling
+- a more polished desktop UX for day-to-day use
+
+If you are testing actively, wired USB remains the safest recovery path.

@@ -36,21 +36,24 @@ export const BacklightSettings = () => {
   );
 
   const pushConfig = useCallback(
-    (next: BacklightConfig, deferred?: boolean) => {
+    (
+      updater: (current: BacklightConfig) => BacklightConfig,
+      deferred?: boolean
+    ) => {
       if (deferred) {
         if (deferredTimerRef.current) {
           clearTimeout(deferredTimerRef.current);
         }
         deferredTimerRef.current = setTimeout(() => {
           deferredTimerRef.current = null;
-          void updateConfig(next).catch((error) => {
+          void updateConfig(updater).catch((error) => {
             console.error("Failed to update backlight config", error);
           });
         }, 250);
         return;
       }
 
-      void updateConfig(next).catch((error) => {
+      void updateConfig(updater).catch((error) => {
         console.error("Failed to update backlight config", error);
       });
     },
@@ -63,10 +66,9 @@ export const BacklightSettings = () => {
       value: BacklightConfig[K],
       deferred?: boolean
     ) => {
-      if (!config) return;
-      pushConfig({ ...config, [field]: value }, deferred);
+      pushConfig((current) => ({ ...current, [field]: value }), deferred);
     },
-    [config, pushConfig]
+    [pushConfig]
   );
 
   if (loading) {
@@ -126,8 +128,9 @@ export const BacklightSettings = () => {
       <p className="text-sm text-gray-500">
         Live-sync note: every control here maps to active firmware behavior.
         Trackpad lighting uses the ZMK backlight path; keyboard lighting uses
-        the RGB path. USB/charging trackpad LED behavior now lives in the Power
-        tab so it doesn&apos;t interfere with normal lighting controls.
+        the RGB path. Each path now has its own idle timer, and USB/charging
+        trackpad LED behavior lives in the Power tab so it doesn&apos;t interfere
+        with normal lighting controls.
       </p>
 
       {/* Trackpad Backlight */}
@@ -181,22 +184,27 @@ export const BacklightSettings = () => {
             }
             disabled={!config.backlightEnabled}
           />
-          Auto-off lighting on idle
+          Trackpad lighting auto-off on idle
         </label>
 
         {config.backlightAutoOff && (
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium">
-              Lighting Idle Timeout ({config.idleTimeoutMs / 1000}s)
+              Trackpad Lighting Idle Timeout (
+              {Math.round(config.backlightIdleTimeoutMs / 1000)}s)
             </label>
             <input
               type="range"
               min={5000}
               max={300000}
               step={5000}
-              value={config.idleTimeoutMs}
+              value={config.backlightIdleTimeoutMs}
               onChange={(e) =>
-                updateField("idleTimeoutMs", parseInt(e.target.value), true)
+                updateField(
+                  "backlightIdleTimeoutMs",
+                  parseInt(e.target.value),
+                  true
+                )
               }
               className="w-full"
               disabled={!config.backlightEnabled}
@@ -206,7 +214,7 @@ export const BacklightSettings = () => {
               <span>5min</span>
             </div>
             <p className="text-xs text-gray-500">
-              Shared timeout for the trackpad backlight and keyboard lighting.
+              This timer only affects the trackpad lighting path.
             </p>
           </div>
         )}
@@ -253,41 +261,41 @@ export const BacklightSettings = () => {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={config.backlightAutoOff}
-            onChange={(e) =>
-              updateField("backlightAutoOff", e.target.checked)
-            }
+            checked={config.rgbAutoOff}
+            onChange={(e) => updateField("rgbAutoOff", e.target.checked)}
             disabled={!config.rgbEnabled}
           />
           Keyboard lighting auto-off on idle
         </label>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium">
-            Keyboard Lighting Idle Timeout ({config.idleTimeoutMs / 1000}s)
-          </label>
-          <input
-            type="range"
-            min={5000}
-            max={300000}
-            step={5000}
-            value={config.idleTimeoutMs}
-            onChange={(e) =>
-              updateField("idleTimeoutMs", parseInt(e.target.value), true)
-            }
-            className="w-full"
-            disabled={!config.rgbEnabled || !config.backlightAutoOff}
-          />
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>5s</span>
-            <span>5min</span>
+        {config.rgbAutoOff && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">
+              Keyboard Lighting Idle Timeout (
+              {Math.round(config.rgbIdleTimeoutMs / 1000)}s)
+            </label>
+            <input
+              type="range"
+              min={5000}
+              max={300000}
+              step={5000}
+              value={config.rgbIdleTimeoutMs}
+              onChange={(e) =>
+                updateField("rgbIdleTimeoutMs", parseInt(e.target.value), true)
+              }
+              className="w-full"
+              disabled={!config.rgbEnabled}
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>5s</span>
+              <span>5min</span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="rounded bg-gray-50 p-2 text-xs text-gray-500">
-          Current firmware uses one shared lighting idle timer for the trackpad
-          and keyboard lighting paths, but this control is now surfaced here so
-          keyboard timeout tuning is directly available.
+          The firmware now keeps separate idle timers for trackpad lighting and
+          keyboard lighting.
         </div>
 
         <div className="p-2 bg-gray-50 rounded text-xs text-gray-500">

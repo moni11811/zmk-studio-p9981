@@ -16,22 +16,36 @@ export function useLocalStorageState<T>(
   },
 ) {
   const reactState = useState<T>(() => {
-    const savedValue = localStorage.getItem(key);
-    if (savedValue !== null) {
-      if (options?.deserialize) {
-        return options.deserialize(savedValue);
+    try {
+      const savedValue = localStorage.getItem(key);
+      if (savedValue !== null) {
+        if (options?.deserialize) {
+          return options.deserialize(savedValue);
+        }
+
+        if (typeof defaultValue === "object" && defaultValue !== null) {
+          return JSON.parse(savedValue) as T;
+        }
+
+        return savedValue as T; // Assuming T is a string
       }
-      return savedValue as T; // Assuming T is a string
+    } catch (_error) {
+      return defaultValue;
     }
+
     return defaultValue;
   });
 
   const [state] = reactState;
 
   useEffect(() => {
-    const serializedState =
-      options?.serialize?.(state) || basicSerialize(state);
-    localStorage.setItem(key, serializedState);
+    try {
+      const serializedState =
+        options?.serialize?.(state) || basicSerialize(state);
+      localStorage.setItem(key, serializedState);
+    } catch (_error) {
+      // Ignore storage failures so persisted UI state can't crash the app.
+    }
   }, [state, key, options]);
 
   return reactState;

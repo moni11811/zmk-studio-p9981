@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import type { GetBehaviorDetailsResponse } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 
 /**
@@ -9,6 +9,7 @@ import type { GetBehaviorDetailsResponse } from "@zmkfirmware/zmk-studio-ts-clie
  */
 
 type SettingsTab =
+  | "subprofiles"
   | "trackpad"
   | "backlight"
   | "sleep"
@@ -19,19 +20,34 @@ type SettingsTab =
   | "combos";
 
 const TABS: { id: SettingsTab; label: string }[] = [
+  { id: "subprofiles", label: "Sub-Profiles" },
   { id: "trackpad", label: "Trackpad" },
   { id: "backlight", label: "Backlight" },
   { id: "sleep", label: "Sleep" },
-  { id: "power", label: "Power" },
   { id: "bluetooth", label: "Bluetooth" },
+  { id: "power", label: "Power" },
   { id: "behaviors", label: "Behaviors" },
   { id: "macros", label: "Macros" },
   { id: "combos", label: "Combos" },
 ];
 
+const PROFILE_SCOPED_TABS: SettingsTab[] = [
+  "subprofiles",
+  "trackpad",
+  "backlight",
+  "sleep",
+];
+
+const GLOBAL_TABS: SettingsTab[] = ["power", "bluetooth", "behaviors", "macros", "combos"];
+
 const TrackpadSettings = lazy(() =>
   import("./TrackpadSettings").then((module) => ({
     default: module.TrackpadSettings,
+  }))
+);
+const SubprofileSettings = lazy(() =>
+  import("./SubprofileSettings").then((module) => ({
+    default: module.SubprofileSettings,
   }))
 );
 const BacklightSettings = lazy(() =>
@@ -91,11 +107,11 @@ class SettingsTabErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="p-4">
-          <div className="rounded border border-red-200 bg-red-50 p-4">
-            <h2 className="text-lg font-bold text-red-900">
+          <div className="rounded border border-error/30 bg-base-200 p-4">
+            <h2 className="text-lg font-bold text-base-content">
               {this.props.tabLabel} Tab Failed to Load
             </h2>
-            <p className="mt-2 text-sm text-red-800">
+            <p className="mt-2 text-sm text-base-content/70">
               This tab hit a render error. Switch tabs and come back, or reopen
               the app after reconnecting the keyboard.
             </p>
@@ -109,7 +125,7 @@ class SettingsTabErrorBoundary extends React.Component<
 }
 
 const SettingsTabLoading = ({ label }: { label: string }) => (
-  <div className="flex items-center justify-center p-8 text-gray-500">
+  <div className="flex items-center justify-center p-8 text-base-content/60">
     Loading {label.toLowerCase()}...
   </div>
 );
@@ -118,19 +134,58 @@ interface DeviceSettingsProps {
   behaviors: GetBehaviorDetailsResponse[];
   layers: { id: number; name: string }[];
   totalKeys: number;
+  scope?: "subprofiles" | "global";
 }
+
+const SettingsStripButton = ({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) => (
+  <button
+    onClick={onClick}
+    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+      active
+        ? "border-primary/40 bg-primary/20 text-base-content"
+        : "border-base-300 bg-base-200 text-base-content/70 hover:bg-base-300 hover:text-base-content"
+    }`}
+  >
+    {label}
+  </button>
+);
 
 export const DeviceSettings = ({
   behaviors,
   layers,
   totalKeys,
+  scope = "subprofiles",
 }: DeviceSettingsProps) => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("trackpad");
+  const defaultTab = scope === "global" ? "power" : "subprofiles";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
+  const [profileGroupCollapsed, setProfileGroupCollapsed] = useState(false);
   const activeTabLabel =
     TABS.find((tab) => tab.id === activeTab)?.label ?? "Settings";
+  const profileTabs = TABS.filter((tab) => PROFILE_SCOPED_TABS.includes(tab.id));
+  const globalTabs = TABS.filter((tab) => GLOBAL_TABS.includes(tab.id));
+
+  useEffect(() => {
+    if (scope === "global" && !GLOBAL_TABS.includes(activeTab)) {
+      setActiveTab("power");
+    }
+
+    if (scope === "subprofiles" && !PROFILE_SCOPED_TABS.includes(activeTab)) {
+      setActiveTab("subprofiles");
+    }
+  }, [activeTab, scope]);
 
   const renderActiveTab = () => {
     switch (activeTab) {
+      case "subprofiles":
+        return <SubprofileSettings />;
       case "trackpad":
         return <TrackpadSettings />;
       case "backlight":
@@ -158,21 +213,47 @@ export const DeviceSettings = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Bar */}
-      <div className="flex border-b border-gray-200 bg-white shrink-0">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? "border-blue-500 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="shrink-0 border-b border-base-300 bg-base-300/60 px-3 py-3">
+        <div className="flex flex-col gap-3">
+          {scope === "subprofiles" && (
+            <div className="rounded-xl border border-base-300 bg-base-300/70 p-2">
+              <button
+                onClick={() => setProfileGroupCollapsed((current) => !current)}
+                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm font-semibold text-base-content/80 transition-colors hover:bg-base-200/70"
+              >
+                <span>SubProfile Scope</span>
+                <span className="text-base-content/60">
+                  {profileGroupCollapsed ? "+" : "-"}
+                </span>
+              </button>
+              {!profileGroupCollapsed && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {profileTabs.map((tab) => (
+                    <SettingsStripButton
+                      key={tab.id}
+                      active={activeTab === tab.id}
+                      label={tab.label}
+                      onClick={() => setActiveTab(tab.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {scope === "global" && (
+            <div className="flex flex-wrap gap-2">
+              {globalTabs.map((tab) => (
+                <SettingsStripButton
+                  key={tab.id}
+                  active={activeTab === tab.id}
+                  label={tab.label}
+                  onClick={() => setActiveTab(tab.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tab Content */}

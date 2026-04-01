@@ -18,12 +18,13 @@ export const PowerSettings = () => {
 
   const updateField = useCallback(
     <K extends keyof PowerConfig>(field: K, value: PowerConfig[K]) => {
-      if (!config) return;
-      void updateConfig({ ...config, [field]: value }).catch((error) => {
-        console.error("Failed to update power config", error);
-      });
+      void updateConfig((current) => ({ ...current, [field]: value })).catch(
+        (error) => {
+          console.error("Failed to update power config", error);
+        }
+      );
     },
-    [config, updateConfig]
+    [updateConfig]
   );
 
   if (loading) {
@@ -79,7 +80,7 @@ export const PowerSettings = () => {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h2 className="text-lg font-bold">Power & Battery</h2>
+      <h2 className="text-lg font-bold">Power & Battery (Global)</h2>
       <p className="text-sm text-gray-500">
         Live battery status, report timing, external power control, and USB /
         charging trackpad LED behavior.
@@ -142,7 +143,7 @@ export const PowerSettings = () => {
             onChange={(e) =>
               updateField(
                 "chargingLedMode",
-                e.target.value as "off" | "solid" | "blink"
+                e.target.value as "off" | "solid" | "blink" | "pulse"
               )
             }
             className="h-8 rounded border border-gray-300"
@@ -150,11 +151,38 @@ export const PowerSettings = () => {
             <option value="off">Off</option>
             <option value="solid">Solid while USB powered</option>
             <option value="blink">Blink while USB powered</option>
+            <option value="pulse">Pulse while USB powered</option>
           </select>
           <p className="text-xs text-gray-500">
             This uses USB power presence as the practical charging indicator.
           </p>
         </div>
+
+        {(config.chargingLedMode === "blink" || config.chargingLedMode === "pulse") && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">
+              USB / Charging LED Speed ({config.chargingLedSpeedMs}ms cycle)
+            </label>
+            <input
+              type="range"
+              min={200}
+              max={3000}
+              step={100}
+              value={config.chargingLedSpeedMs}
+              onChange={(e) =>
+                updateField(
+                  "chargingLedSpeedMs",
+                  Number.parseInt(e.target.value, 10)
+                )
+              }
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Faster</span>
+              <span>Slower</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-3 border-t border-gray-200 pt-4">

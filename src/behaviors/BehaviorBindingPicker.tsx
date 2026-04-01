@@ -52,7 +52,7 @@ function validateBinding(
   metadata: BehaviorBindingParametersSet[],
   layerIds: number[],
   param1?: number,
-  param2?: number
+  param2?: number,
 ): boolean {
   if (
     (param1 === undefined || param1 === 0) &&
@@ -62,7 +62,7 @@ function validateBinding(
   }
 
   let matchingSet = metadata.find((s) =>
-    validateValue(layerIds, param1, s.param1)
+    validateValue(layerIds, param1, s.param1),
   );
 
   if (!matchingSet) {
@@ -79,36 +79,43 @@ export const BehaviorBindingPicker = ({
   onBindingChanged,
 }: BehaviorBindingPickerProps) => {
   const [behaviorId, setBehaviorId] = useState(
-    normalizeNumericValue(binding.behaviorId)
+    normalizeNumericValue(binding.behaviorId),
   );
   const [param1, setParam1] = useState<number | undefined>(
-    normalizeNumericValue(binding.param1)
+    normalizeNumericValue(binding.param1),
   );
   const [param2, setParam2] = useState<number | undefined>(
-    normalizeNumericValue(binding.param2)
+    normalizeNumericValue(binding.param2),
   );
 
   const metadata = useMemo(
     () =>
-      behaviors.find((b) => normalizeNumericValue(b.id) === behaviorId)?.metadata,
-    [behaviorId, behaviors]
+      behaviors.find((b) => normalizeNumericValue(b.id) === behaviorId)
+        ?.metadata,
+    [behaviorId, behaviors],
   );
 
   const sortedBehaviors = useMemo(
     () =>
-      [...behaviors].sort((a, b) => getBehaviorLabel(a).localeCompare(getBehaviorLabel(b))),
-    [behaviors]
+      [...behaviors].sort((a, b) =>
+        getBehaviorLabel(a).localeCompare(getBehaviorLabel(b)),
+      ),
+    [behaviors],
   );
 
   const selectableBehaviors = useMemo(() => {
-    if (sortedBehaviors.some((behavior) => normalizeNumericValue(behavior.id) === behaviorId)) {
+    if (
+      sortedBehaviors.some(
+        (behavior) => normalizeNumericValue(behavior.id) === behaviorId,
+      )
+    ) {
       return sortedBehaviors;
     }
 
     return [
       {
         id: behaviorId,
-        displayName: `Behavior ${behaviorId}`,
+        displayName: "Unlisted",
         metadata: [],
       } as GetBehaviorDetailsResponse,
       ...sortedBehaviors,
@@ -121,7 +128,7 @@ export const BehaviorBindingPicker = ({
       param1: normalizeNumericValue(binding.param1),
       param2: normalizeNumericValue(binding.param2),
     }),
-    [binding]
+    [binding],
   );
   const previousBindingRef = useRef(normalizedBinding);
   const isExternalBindingChange =
@@ -145,7 +152,7 @@ export const BehaviorBindingPicker = ({
     if (!metadata) {
       console.error(
         "Can't find metadata for the selected behaviorId",
-        behaviorId
+        behaviorId,
       );
       return;
     }
@@ -155,7 +162,7 @@ export const BehaviorBindingPicker = ({
         metadata,
         layers.map(({ id }) => id),
         param1,
-        param2
+        param2,
       )
     ) {
       onBindingChanged({
@@ -196,7 +203,10 @@ export const BehaviorBindingPicker = ({
           }}
         >
           {selectableBehaviors.map((b) => (
-            <option key={normalizeNumericValue(b.id)} value={normalizeNumericValue(b.id)}>
+            <option
+              key={normalizeNumericValue(b.id)}
+              value={normalizeNumericValue(b.id)}
+            >
               {getBehaviorLabel(b)}
             </option>
           ))}

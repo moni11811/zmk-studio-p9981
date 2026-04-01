@@ -19,10 +19,12 @@ import type {
   BluetoothConfig,
   PowerConfig,
   SleepConfig,
+  SubProfileState,
   SetBehaviorRuntimeConfigResponseCode,
   SetMacroStepsResponseCode,
   SetComboResponseCode,
   SetConfigResponseCode,
+  SwitchSubProfileResponseCode,
 } from "./bb9981Types";
 
 export type {
@@ -37,6 +39,7 @@ export type {
   BluetoothConfig,
   PowerConfig,
   SleepConfig,
+  SubProfileState,
 };
 
 export {
@@ -47,6 +50,7 @@ export {
   SetMacroStepsResponseCode,
   SetComboResponseCode,
   SetConfigResponseCode,
+  SwitchSubProfileResponseCode,
 } from "./bb9981Types";
 
 type ChangeListener<T> = (data: T) => void;
@@ -59,6 +63,7 @@ const listeners: {
   bluetooth: ChangeListener<BluetoothConfig>[];
   power: ChangeListener<PowerConfig>[];
   sleep: ChangeListener<SleepConfig>[];
+  subprofiles: ChangeListener<SubProfileState>[];
   macros: ChangeListener<MacroDetails[]>[];
   combos: ChangeListener<ComboDetails[]>[];
   behaviors: (() => void)[];
@@ -68,6 +73,7 @@ const listeners: {
   bluetooth: [],
   power: [],
   sleep: [],
+  subprofiles: [],
   macros: [],
   combos: [],
   behaviors: [],
@@ -268,18 +274,27 @@ function mapBacklightConfig(config: any): BacklightConfig {
     backlightEnabled: config.backlightEnabled ?? true,
     backlightBrightness: config.backlightBrightness ?? 40,
     backlightAutoOff: config.backlightAutoOff ?? true,
-    idleTimeoutMs: config.idleTimeoutMs ?? 30000,
+    backlightIdleTimeoutMs:
+      config.backlightIdleTimeoutMs ?? config.idleTimeoutMs ?? 30000,
     rgbEnabled: config.rgbEnabled ?? false,
     rgbBrightness: config.rgbBrightness ?? 50,
     rgbColor: config.rgbColor ?? "#ffffff",
     trackpadLedEnabled: config.trackpadLedEnabled ?? true,
     trackpadLedBrightness: config.trackpadLedBrightness ?? 50,
+    rgbAutoOff: config.rgbAutoOff ?? config.backlightAutoOff ?? true,
+    rgbIdleTimeoutMs: config.rgbIdleTimeoutMs ?? config.idleTimeoutMs ?? 30000,
   };
 }
 
 function mapBluetoothConfig(config: any): BluetoothConfig {
   return {
     outputMode: config.outputMode === "usb" ? "usb" : "ble",
+    activeOutputMode:
+      Number(config.activeOutputMode ?? 0) === 1
+        ? "usb"
+        : Number(config.activeOutputMode ?? 0) === 2
+          ? "ble"
+          : "none",
     activeProfile: config.activeProfile ?? 0,
     profiles: (config.profiles ?? []).map((profile: any) => ({
       index: profile.index ?? 0,
@@ -308,6 +323,8 @@ function mapChargingLedMode(value: any): PowerConfig["chargingLedMode"] {
       return "solid";
     case 2:
       return "blink";
+    case 3:
+      return "pulse";
     default:
       return "off";
   }
@@ -319,6 +336,8 @@ function encodeChargingLedMode(mode: PowerConfig["chargingLedMode"]): number {
       return 1;
     case "blink":
       return 2;
+    case "pulse":
+      return 3;
     default:
       return 0;
   }
@@ -336,6 +355,7 @@ function mapPowerConfig(config: any): PowerConfig {
     batteryReportIntervalS: toNumber(config.batteryReportIntervalS, 60),
     activityState: mapActivityState(config.activityState),
     chargingLedMode: mapChargingLedMode(config.chargingLedMode),
+    chargingLedSpeedMs: toNumber(config.chargingLedSpeedMs, 1000),
   };
 }
 
@@ -346,6 +366,62 @@ function mapSleepConfig(config: any): SleepConfig {
     sleepEnabled: config.sleepEnabled ?? false,
     sleepTimeoutMs: toNumber(config.sleepTimeoutMs, 1800000),
     sleepWhileUsbPowered: config.sleepWhileUsbPowered ?? false,
+  };
+}
+
+function mapSubProfileState(state: any): SubProfileState {
+  const rawProfiles = Array.isArray(state?.profiles)
+    ? state.profiles
+    : Array.isArray(state?.profiles?.items)
+      ? state.profiles.items
+      : [];
+  const activeProfile = toNumber(state?.activeProfile);
+  const profiles: SubProfileState["profiles"] = rawProfiles.map((profile: any) => ({
+    index: toNumber(profile?.index),
+    name:
+      typeof profile?.name === "string"
+        ? profile.name
+        : String(profile?.name ?? ""),
+    active: profile?.active ?? false,
+    initialized: profile?.initialized ?? false,
+    integrityIssueCount: toNumber(profile?.integrityIssueCount),
+    integrityRepairCount: toNumber(profile?.integrityRepairCount),
+  }));
+
+  for (let index = 0; index < 3; index++) {
+    if (!profiles.some((profile: SubProfileState["profiles"][number]) => profile.index === index)) {
+      profiles.push({
+        index,
+        name: `Profile ${index + 1}`,
+        active: index === activeProfile,
+        initialized: false,
+        integrityIssueCount: 0,
+        integrityRepairCount: 0,
+      });
+    }
+  }
+
+  profiles.sort(
+    (a: SubProfileState["profiles"][number], b: SubProfileState["profiles"][number]) =>
+      a.index - b.index
+  );
+
+  const hasExplicitActive = profiles.some(
+    (profile: SubProfileState["profiles"][number]) => profile.active
+  );
+  if (!hasExplicitActive && activeProfile >= 0 && activeProfile < profiles.length) {
+    const target = profiles.find(
+      (profile: SubProfileState["profiles"][number]) => profile.index === activeProfile
+    );
+    if (target) {
+      target.active = true;
+    }
+  }
+
+  return {
+    activeProfile,
+    switching: state?.switching ?? false,
+    profiles,
   };
 }
 
@@ -402,6 +478,11 @@ async function notifyPowerChanged() {
 async function notifySleepChanged() {
   const config = await settingsRpc.getSleepConfig();
   listeners.sleep.forEach((cb) => cb(config));
+}
+
+async function notifySubprofilesChanged() {
+  const state = await settingsRpc.getSubprofileState();
+  listeners.subprofiles.forEach((cb) => cb(state));
 }
 
 const macrosRpc = {
@@ -641,7 +722,9 @@ const settingsRpc = {
       settings: { setBacklightConfig: { config } },
     } as any)) as any;
 
-    await notifyBacklightChanged();
+    // The hook already owns the optimistic update plus guarded settle/refetch
+    // cycle. Triggering another immediate refetch here can race that flow and
+    // make lighting controls appear to snap back.
     return resp.settings?.setBacklightConfig ?? 0;
   },
 
@@ -668,7 +751,11 @@ const settingsRpc = {
       settings: { setBluetoothConfig: { config } },
     } as any)) as any;
 
-    await notifyBluetoothChanged();
+    // Do NOT call notifyBluetoothChanged() here. The caller
+    // (useBluetoothConfig updateConfig) owns the post-update refetch
+    // lifecycle. Calling it here caused a race where the refetched
+    // activeOutputMode (still BLE during USB enumeration) overwrote the
+    // optimistic outputMode before the hook could guard it.
     return resp.settings?.setBluetoothConfig ?? 0;
   },
 
@@ -730,11 +817,67 @@ const settingsRpc = {
     };
   },
 
+  async getSubprofileState(): Promise<SubProfileState> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { getSubprofileState: true },
+    } as any)) as any;
+
+    return mapSubProfileState(resp.settings?.getSubprofileState);
+  },
+
+  async switchSubprofile(
+    profileIndex: number
+  ): Promise<SwitchSubProfileResponseCode> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { switchSubprofile: { profileIndex } },
+    } as any)) as any;
+
+    return resp.settings?.switchSubprofile ?? 0;
+  },
+
+  async renameSubprofile(profileIndex: number, name: string): Promise<boolean> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { renameSubprofile: { profileIndex, name } },
+    } as any)) as any;
+
+    await notifySubprofilesChanged();
+    return !!resp.settings?.renameSubprofile;
+  },
+
+  async resetSubprofile(profileIndex: number): Promise<boolean> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { resetSubprofile: { profileIndex } },
+    } as any)) as any;
+
+    await notifySubprofilesChanged();
+    await notifyTrackpadChanged();
+    await notifyBacklightChanged();
+    await notifyBluetoothChanged();
+    await notifyPowerChanged();
+    await notifySleepChanged();
+    return !!resp.settings?.resetSubprofile;
+  },
+
+  onSubprofileChange(cb: ChangeListener<SubProfileState>): () => void {
+    listeners.subprofiles.push(cb);
+    return () => {
+      const idx = listeners.subprofiles.indexOf(cb);
+      if (idx >= 0) listeners.subprofiles.splice(idx, 1);
+    };
+  },
+
   async powerOff(): Promise<boolean> {
     const resp = (await call_rpc(getConnection(), {
       settings: { powerOff: true },
     } as any)) as any;
     return !!resp.settings?.powerOff;
+  },
+
+  async rebootToBootloader(): Promise<boolean> {
+    const resp = (await call_rpc(getConnection(), {
+      settings: { rebootToBootloader: true },
+    } as any)) as any;
+    return !!resp.settings?.rebootToBootloader;
   },
 
   async selectBtProfile(profileIndex: number): Promise<boolean> {
@@ -776,6 +919,7 @@ const settingsRpc = {
     const resp = (await call_rpc(getConnection(), {
       settings: { discardChanges: true },
     } as any)) as any;
+    await notifySubprofilesChanged();
     await notifyTrackpadChanged();
     await notifyBacklightChanged();
     await notifyBluetoothChanged();

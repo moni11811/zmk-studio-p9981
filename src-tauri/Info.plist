@@ -4,5 +4,7 @@
 <dict>
   <key>NSBluetoothAlwaysUsageDescription</key>
   <string>Request bluetooth access for wireless access for config</string>
+  <key>NSBluetoothPeripheralUsageDescription</key>
+  <string>Request bluetooth access for wireless access for config</string>
 </dict>
 </plist>

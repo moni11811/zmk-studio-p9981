@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.0](https://github.com/moni11811/zmk-studio-p9981/releases/tag/v2.1) (2026-04-01)
+
+This is the last public release of this fork.
+
+### Features
+
+* Add BB9981 sub-profile management, templates, and import/export flows.
+* Split device controls into clearer Sub-Profiles and Global Settings surfaces.
+* Add bundled firmware flashing and stronger transport/session handling for BB9981 devices.
+
+### Bug Fixes
+
+* Improve Bluetooth reconnect and profile persistence behavior.
+* Fix vendored settings protobuf handling for lighting-related configuration fields.
+
 ## [0.3.1](https://github.com/zmkfirmware/zmk-studio/compare/v0.3.0...v0.3.1) (2025-01-20)
 
 

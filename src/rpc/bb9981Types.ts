@@ -239,12 +239,14 @@ export interface BacklightConfig {
   backlightEnabled: boolean;
   backlightBrightness: number;
   backlightAutoOff: boolean;
-  idleTimeoutMs: number;
+  backlightIdleTimeoutMs: number;
   rgbEnabled: boolean;
   rgbBrightness: number;
   rgbColor: string;
   trackpadLedEnabled: boolean;
   trackpadLedBrightness: number;
+  rgbAutoOff: boolean;
+  rgbIdleTimeoutMs: number;
 }
 
 export interface BtProfile {
@@ -256,6 +258,7 @@ export interface BtProfile {
 
 export interface BluetoothConfig {
   outputMode: "ble" | "usb";
+  activeOutputMode: "ble" | "usb" | "none";
   activeProfile: number;
   profiles: BtProfile[];
   txPowerBoost: boolean;
@@ -267,7 +270,8 @@ export interface PowerConfig {
   extPowerEnabled: boolean;
   batteryReportIntervalS: number;
   activityState: "active" | "idle" | "sleep";
-  chargingLedMode: "off" | "solid" | "blink";
+  chargingLedMode: "off" | "solid" | "blink" | "pulse";
+  chargingLedSpeedMs: number;
 }
 
 export interface SleepConfig {
@@ -276,6 +280,29 @@ export interface SleepConfig {
   sleepEnabled: boolean;
   sleepTimeoutMs: number;
   sleepWhileUsbPowered: boolean;
+}
+
+export interface SubProfileSummary {
+  index: number;
+  name: string;
+  active: boolean;
+  initialized: boolean;
+  integrityIssueCount: number;
+  integrityRepairCount: number;
+}
+
+export interface SubProfileState {
+  activeProfile: number;
+  profiles: SubProfileSummary[];
+  switching: boolean;
+}
+
+export enum SwitchSubProfileResponseCode {
+  OK = 0,
+  ERR_INVALID = 1,
+  ERR_BUSY = 2,
+  ERR_PERSIST = 3,
+  ERR_LOAD = 4,
 }
 
 export interface SettingsRequest {
@@ -295,6 +322,11 @@ export interface SettingsRequest {
   powerOff?: boolean;
   saveChanges?: boolean;
   discardChanges?: boolean;
+  getSubprofileState?: boolean;
+  switchSubprofile?: { profileIndex: number };
+  renameSubprofile?: { profileIndex: number; name: string };
+  resetSubprofile?: { profileIndex: number };
+  rebootToBootloader?: boolean;
 }
 
 export enum SetConfigResponseCode {
@@ -317,6 +349,11 @@ export interface SettingsResponse {
   selectBtProfile?: boolean;
   clearBtProfile?: boolean;
   renameBtProfile?: boolean;
+  getSubprofileState?: SubProfileState;
+  switchSubprofile?: SwitchSubProfileResponseCode;
+  renameSubprofile?: boolean;
+  resetSubprofile?: boolean;
+  rebootToBootloader?: boolean;
   powerOff?: boolean;
   saveChanges?: number;
   discardChanges?: boolean;

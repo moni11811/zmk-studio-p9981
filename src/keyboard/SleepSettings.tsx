@@ -4,15 +4,18 @@ import type { SleepConfig } from "../rpc/bb9981Types";
 
 export const SleepSettings = () => {
   const { config, loading, error, refresh, updateConfig } = useSleepConfig();
+  const sleepSupported =
+    !!config && (config.sleepEnabled || config.sleepTimeoutMs > 0);
 
   const updateField = useCallback(
     <K extends keyof SleepConfig>(field: K, value: SleepConfig[K]) => {
-      if (!config) return;
-      void updateConfig({ ...config, [field]: value }).catch((error) => {
-        console.error("Failed to update sleep config", error);
-      });
+      void updateConfig((current) => ({ ...current, [field]: value })).catch(
+        (error) => {
+          console.error("Failed to update sleep config", error);
+        }
+      );
     },
-    [config, updateConfig]
+    [updateConfig]
   );
 
   if (loading) {
@@ -108,11 +111,19 @@ export const SleepSettings = () => {
       </div>
 
       <div className="flex flex-col gap-3 border-t border-gray-200 pt-4">
+        {!sleepSupported && (
+          <div className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            Deep sleep is disabled in this firmware stability build to protect
+            boot reliability. Idle controls still work live.
+          </div>
+        )}
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={config.sleepEnabled}
             onChange={(e) => updateField("sleepEnabled", e.target.checked)}
+            disabled={!sleepSupported}
           />
           <span className="font-medium">Enable Sleep</span>
         </label>
@@ -126,12 +137,12 @@ export const SleepSettings = () => {
             min={30000}
             max={14400000}
             step={30000}
-            value={config.sleepTimeoutMs}
+            value={sleepSupported ? config.sleepTimeoutMs : 1800000}
             onChange={(e) =>
               updateField("sleepTimeoutMs", Number.parseInt(e.target.value, 10))
             }
             className="w-full"
-            disabled={!config.sleepEnabled}
+            disabled={!sleepSupported || !config.sleepEnabled}
           />
           <div className="flex justify-between text-xs text-gray-400">
             <span>30s</span>
@@ -146,7 +157,7 @@ export const SleepSettings = () => {
             onChange={(e) =>
               updateField("sleepWhileUsbPowered", e.target.checked)
             }
-            disabled={!config.sleepEnabled}
+            disabled={!sleepSupported || !config.sleepEnabled}
           />
           <span>Allow sleep even while USB power is present</span>
         </label>

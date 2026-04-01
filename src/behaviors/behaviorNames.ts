@@ -3,53 +3,93 @@ import type {
   GetBehaviorDetailsResponse,
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 
-type BehaviorLike = Pick<GetBehaviorDetailsResponse, "id" | "displayName" | "metadata">;
+type BehaviorLike = Pick<
+  GetBehaviorDetailsResponse,
+  "id" | "displayName" | "metadata"
+>;
 
 function normalizeBehaviorToken(name?: string): string {
-  return name?.trim().replace(/^&+/, "").toLowerCase() ?? "";
+  return (
+    name
+      ?.trim()
+      .replace(/^&+/, "")
+      .replace(/^zmk[,._-]?behavior[-_]?/i, "")
+      .replace(/[^a-z0-9]+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase() ?? ""
+  );
 }
 
 function getKnownBehaviorLabel(token: string): string | undefined {
   switch (token) {
     case "kp":
+    case "key press":
       return "Key Press";
     case "bt":
+    case "bluetooth":
       return "Bluetooth";
     case "out":
-      return "Output Selection";
-    case "rgb_ug":
-      return "RGB Underglow";
+      return "Output";
+    case "output selection":
+      return "Output";
+    case "rgb ug":
+      return "RGB";
+    case "rgb underglow":
+      return "RGB";
     case "bl":
-      return "Keyboard Backlight";
+      return "Backlight";
+    case "keyboard backlight":
+      return "Backlight";
     case "trans":
       return "Transparent";
+    case "transparent":
+      return "Transparent";
     case "none":
-      return "No Action";
+    case "no action":
+      return "None";
     case "mo":
+      return "Momentary Layer";
+    case "momentary layer":
       return "Momentary Layer";
     case "to":
       return "To Layer";
     case "tog":
       return "Toggle Layer";
     case "lt":
-      return "Layer-Tap";
+      return "Layer Tap";
+    case "layer tap":
+      return "Layer Tap";
     case "mt":
-      return "Mod-Tap";
+      return "Mod Tap";
+    case "mod tap":
+      return "Mod Tap";
     case "sk":
       return "Sticky Key";
     case "sl":
       return "Sticky Layer";
     case "td":
-      return "Tap-Dance";
+      return "Tap Dance";
+    case "tap dance":
+      return "Tap Dance";
+    case "hold tap":
+      return "Hold Tap";
     case "bootloader":
       return "Bootloader";
-    case "sys_reset":
+    case "sys reset":
       return "System Reset";
     case "reset":
       return "Reset";
     default:
       return undefined;
   }
+}
+
+function isGenericFallbackLabel(label: string): boolean {
+  return (
+    /^behavior(?:\s*(?:#\s*)?\d+)?$/i.test(label) ||
+    /^custom behavior(?:\s*(?:#\s*)?\d+)?$/i.test(label)
+  );
 }
 
 function hasHidUsage(metadata: BehaviorBindingParametersSet[]): boolean {
@@ -63,7 +103,7 @@ function hasOnlyLayerParam(metadata: BehaviorBindingParametersSet[]): boolean {
       (set) =>
         set.param2.length === 0 &&
         set.param1.length > 0 &&
-        set.param1.every((value) => value.layerId)
+        set.param1.every((value) => value.layerId),
     )
   );
 }
@@ -72,17 +112,19 @@ function collectValueNames(metadata: BehaviorBindingParametersSet[]): string[] {
   return metadata.flatMap((set) =>
     [...set.param1, ...set.param2]
       .map((value) => value.name?.trim().toLowerCase())
-      .filter((value): value is string => !!value)
+      .filter((value): value is string => !!value),
   );
 }
 
-function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | undefined {
+function inferBehaviorName(
+  metadata: BehaviorBindingParametersSet[],
+): string | undefined {
   if (hasHidUsage(metadata)) {
     return "Key Press";
   }
 
   if (hasOnlyLayerParam(metadata)) {
-    return "Layer";
+    return "Momentary Layer";
   }
 
   const valueNames = collectValueNames(metadata);
@@ -90,7 +132,8 @@ function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | u
     return undefined;
   }
 
-  const hasAny = (...needles: string[]) => needles.some((needle) => valueNames.includes(needle));
+  const hasAny = (...needles: string[]) =>
+    needles.some((needle) => valueNames.includes(needle));
 
   if (
     hasAny(
@@ -100,14 +143,14 @@ function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | u
       "clear selected profile",
       "select profile",
       "disconnect profile",
-      "profile"
+      "profile",
     )
   ) {
     return "Bluetooth";
   }
 
   if (hasAny("toggle outputs", "usb output", "ble output")) {
-    return "Output Selection";
+    return "Output";
   }
 
   if (
@@ -126,10 +169,10 @@ function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | u
       "next effect",
       "previous effect",
       "set color",
-      "color"
+      "color",
     )
   ) {
-    return "RGB Underglow";
+    return "RGB";
   }
 
   return undefined;
@@ -137,12 +180,31 @@ function inferBehaviorName(metadata: BehaviorBindingParametersSet[]): string | u
 
 export function getBehaviorLabel(behavior: BehaviorLike): string {
   const trimmed = behavior.displayName?.trim();
-  const knownLabel = getKnownBehaviorLabel(normalizeBehaviorToken(trimmed));
-  if (knownLabel) {
-    return knownLabel;
-  }
+  if (trimmed && !isGenericFallbackLabel(trimmed)) {
+    const knownLabel = getKnownBehaviorLabel(normalizeBehaviorToken(trimmed));
+    if (knownLabel) {
+      return knownLabel;
+    }
 
-  if (trimmed) {
+    if (/^custom\s+/i.test(trimmed)) {
+      const customDisplay = trimmed.replace(/^custom\s+/i, "").trim();
+      if (customDisplay && !isGenericFallbackLabel(customDisplay)) {
+        const customKnown = getKnownBehaviorLabel(
+          normalizeBehaviorToken(customDisplay),
+        );
+        if (customKnown) {
+          return customKnown;
+        }
+
+        const customInferred = inferBehaviorName(behavior.metadata ?? []);
+        if (customInferred) {
+          return customInferred;
+        }
+
+        return customDisplay;
+      }
+    }
+
     return trimmed;
   }
 
@@ -151,5 +213,5 @@ export function getBehaviorLabel(behavior: BehaviorLike): string {
     return inferred;
   }
 
-  return `Behavior ${behavior.id}`;
+  return "Unlisted";
 }

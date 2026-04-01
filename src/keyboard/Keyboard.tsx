@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -33,14 +34,44 @@ import { deserializeLayoutZoom, LayoutZoom } from "./PhysicalLayout";
 import { useLocalStorageState } from "../misc/useLocalStorageState";
 import { DeviceSettings } from "./DeviceSettings";
 import { bb9981Rpc } from "../rpc/bb9981Rpc";
+import { useSubprofiles } from "../rpc/useBB9981";
+import { useSub } from "../usePubSub";
+import type { SubProfileSummary } from "../rpc/bb9981Types";
 
-type MainView = "keymap" | "settings";
+type MainView = "keymap" | "subprofiles" | "global";
 
 type StudioBehaviorDetails = GetBehaviorDetailsResponse & {
   isUserDefined?: boolean;
 };
 
 type BehaviorMap = Record<number, StudioBehaviorDetails>;
+type StoredBinding = { behaviorId: number; param1: number; param2: number };
+const DEFAULT_SUBPROFILES: SubProfileSummary[] = [
+  {
+    index: 0,
+    name: "Profile 1",
+    active: true,
+    initialized: false,
+    integrityIssueCount: 0,
+    integrityRepairCount: 0,
+  },
+  {
+    index: 1,
+    name: "Profile 2",
+    active: false,
+    initialized: false,
+    integrityIssueCount: 0,
+    integrityRepairCount: 0,
+  },
+  {
+    index: 2,
+    name: "Profile 3",
+    active: false,
+    initialized: false,
+    integrityIssueCount: 0,
+    integrityRepairCount: 0,
+  },
+];
 
 function normalizeBehaviorId(value: unknown, fallback = 0): number {
   if (typeof value === "number") {
@@ -234,7 +265,11 @@ function useLayouts(): [
   ];
 }
 
-export default function Keyboard() {
+export default function Keyboard({
+  onMainViewChanged,
+}: {
+  onMainViewChanged?: (view: MainView) => void;
+}) {
   const [
     layouts,
     _setLayouts,
@@ -253,6 +288,10 @@ export default function Keyboard() {
   const [keymapScale, setKeymapScale] = useLocalStorageState<LayoutZoom>("keymapScale", "auto", {
     deserialize: deserializeLayoutZoom,
   });
+  const [copiedBinding, setCopiedBinding] = useLocalStorageState<StoredBinding | null>(
+    "bb9981CopiedBinding",
+    null
+  );
 
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
   const [selectedKeyPosition, setSelectedKeyPosition] = useState<
@@ -260,6 +299,16 @@ export default function Keyboard() {
   >(undefined);
   const behaviors = useBehaviors(keymap);
   const [mainView, setMainView] = useState<MainView>("keymap");
+  const keymapRefreshInFlight = useRef(false);
+  const { state: subprofileState, loading: subprofilesLoading, error: subprofilesError, switchProfile } =
+    useSubprofiles();
+  const subprofileButtons = subprofileState?.profiles?.length
+    ? subprofileState.profiles
+    : DEFAULT_SUBPROFILES;
+
+  useEffect(() => {
+    onMainViewChanged?.(mainView);
+  }, [mainView, onMainViewChanged]);
 
   const conn = useContext(ConnectionContext);
   const undoRedo = useContext(UndoRedoContext);
@@ -280,6 +329,36 @@ export default function Keyboard() {
     setSelectedLayerIndex(0);
     setSelectedKeyPosition(undefined);
   }, [conn]);
+
+  const refreshKeymap = useCallback(async () => {
+    if (!conn.conn) {
+      return;
+    }
+
+    if (keymapRefreshInFlight.current) {
+      return;
+    }
+
+    keymapRefreshInFlight.current = true;
+
+    try {
+      const resp = await call_rpc(conn.conn, { keymap: { getKeymap: true } });
+      if (resp.keymap?.getKeymap) {
+        setKeymap(resp.keymap.getKeymap);
+      }
+    } catch (error) {
+      console.error("Failed to refresh keymap", error);
+    } finally {
+      keymapRefreshInFlight.current = false;
+    }
+  }, [conn.conn, setKeymap]);
+
+  useSub("rpc_notification.settings.subprofileStateChanged", (state) => {
+    if (state?.switching) {
+      return;
+    }
+    void refreshKeymap();
+  });
 
   useEffect(() => {
     async function performSetRequest() {
@@ -602,30 +681,93 @@ export default function Keyboard() {
     [keymap]
   );
 
+  const copySelectedBinding = useCallback(() => {
+    if (!selectedBinding) {
+      return;
+    }
+
+    setCopiedBinding({
+      behaviorId: normalizeBehaviorId(selectedBinding.behaviorId),
+      param1: normalizeBehaviorId(selectedBinding.param1),
+      param2: normalizeBehaviorId(selectedBinding.param2),
+    });
+  }, [selectedBinding, setCopiedBinding]);
+
+  const pasteBinding = useCallback(() => {
+    if (!copiedBinding) {
+      return;
+    }
+
+    doUpdateBinding(copiedBinding);
+  }, [copiedBinding, doUpdateBinding]);
+
   return (
     <div className="flex flex-col max-w-full min-w-0 min-h-0 h-full">
       {/* Main View Toggle */}
-      <div className="flex border-b border-gray-300 bg-base-100 shrink-0">
+      <div className="flex border-b border-base-300 bg-base-200 shrink-0">
         <button
           onClick={() => setMainView("keymap")}
           className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
             mainView === "keymap"
-              ? "border-blue-500 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
+              ? "border-primary/50 text-base-content"
+              : "border-transparent text-base-content/60 hover:text-base-content"
           }`}
         >
           Keymap
         </button>
         <button
-          onClick={() => setMainView("settings")}
+          onClick={() => setMainView("subprofiles")}
           className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
-            mainView === "settings"
-              ? "border-blue-500 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
+            mainView === "subprofiles"
+              ? "border-primary/50 text-base-content"
+              : "border-transparent text-base-content/60 hover:text-base-content"
           }`}
         >
-          Device Settings
+          Sub-Profiles
         </button>
+        <button
+          onClick={() => setMainView("global")}
+          className={`px-5 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mainView === "global"
+              ? "border-primary/50 text-base-content"
+              : "border-transparent text-base-content/60 hover:text-base-content"
+          }`}
+        >
+          Global Settings
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border-b border-base-300 bg-base-200 px-4 py-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-base-content/60">
+            Active Profile
+          </span>
+          <div className="flex gap-2">
+            {subprofileButtons.map((profile) => (
+              <button
+                key={profile.index}
+                onClick={() => void switchProfile(profile.index)}
+                className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+                  profile.active
+                    ? "border-primary/50 bg-primary/20 text-base-content"
+                    : "border-base-300 bg-base-100 text-base-content/80 hover:bg-base-300"
+                }`}
+                disabled={subprofileState?.switching || !subprofileState}
+                title={!subprofileState ? "Waiting for subprofile state from the keyboard." : undefined}
+              >
+                {profile.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        {subprofilesLoading && (
+          <span className="text-xs text-base-content/60">Loading profiles...</span>
+        )}
+        {!subprofilesLoading && subprofilesError && !subprofileState && (
+          <span className="text-xs text-warning-content/80">
+            Profile state is temporarily unavailable.
+          </span>
+        )}
       </div>
 
       {/* Keymap View */}
@@ -690,6 +832,21 @@ export default function Keyboard() {
           )}
           {keymap && selectedBinding && (
             <div className="p-2 col-start-2 row-start-2 bg-base-200">
+              <div className="mb-2 flex gap-2">
+                <button
+                  onClick={copySelectedBinding}
+                  className="rounded border border-base-300 bg-base-100 px-3 py-1.5 text-sm text-base-content/80 hover:bg-base-300"
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={pasteBinding}
+                  className="rounded border border-base-300 bg-base-100 px-3 py-1.5 text-sm text-base-content/80 hover:bg-base-300 disabled:bg-base-200 disabled:text-base-content/40"
+                  disabled={!copiedBinding}
+                >
+                  Paste
+                </button>
+              </div>
               <BehaviorBindingPicker
                 key={`${selectedLayerIndex}:${selectedKeyPosition ?? "none"}`}
                 binding={selectedBinding}
@@ -702,13 +859,24 @@ export default function Keyboard() {
         </div>
       )}
 
-      {/* Device Settings View */}
-      {mainView === "settings" && (
+      {mainView === "subprofiles" && (
         <div className="flex-1 overflow-hidden">
           <DeviceSettings
             behaviors={Object.values(behaviors)}
             layers={layerInfo}
             totalKeys={layouts?.[selectedPhysicalLayoutIndex]?.keys?.length ?? 0}
+            scope="subprofiles"
+          />
+        </div>
+      )}
+
+      {mainView === "global" && (
+        <div className="flex-1 overflow-hidden">
+          <DeviceSettings
+            behaviors={Object.values(behaviors)}
+            layers={layerInfo}
+            totalKeys={layouts?.[selectedPhysicalLayoutIndex]?.keys?.length ?? 0}
+            scope="global"
           />
         </div>
       )}

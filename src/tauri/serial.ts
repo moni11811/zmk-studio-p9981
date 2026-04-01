@@ -9,7 +9,8 @@ export async function list_devices(): Promise<Array<AvailableDevice>> {
 }
 
 export async function connect(dev: AvailableDevice): Promise<RpcTransport> {
-  if (!(await invoke("serial_connect", dev))) {
+  const sessionId = await invoke<number>("serial_connect", dev);
+  if (!sessionId) {
     throw new Error("Failed to connect");
   }
 
@@ -25,16 +26,22 @@ export async function connect(dev: AvailableDevice): Promise<RpcTransport> {
 
   const unlisten_data = await listen(
     "connection_data",
-    async (event: { payload: Array<number> }) => {
+    async (event: { payload: { session_id: number; data: Array<number> } }) => {
+      if (event.payload.session_id !== sessionId) {
+        return;
+      }
       let writer = response_writable.getWriter();
-      await writer.write(new Uint8Array(event.payload));
+      await writer.write(new Uint8Array(event.payload.data));
       writer.releaseLock();
     }
   );
 
   const unlisten_disconnected = await listen(
     "connection_disconnected",
-    async (_ev: any) => {
+    async (event: { payload?: { session_id: number } }) => {
+      if (event.payload?.session_id !== sessionId) {
+        return;
+      }
       unlisten_data();
       unlisten_disconnected();
       response_writable.close();
@@ -46,7 +53,7 @@ export async function connect(dev: AvailableDevice): Promise<RpcTransport> {
   let abort_cb = async (_reason: any) => {
     unlisten_data();
     unlisten_disconnected();
-    await invoke("transport_close");
+    await invoke("transport_close_session", { sessionId });
     signal.removeEventListener("abort", abort_cb);
   };
 

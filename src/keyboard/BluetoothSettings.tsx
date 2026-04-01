@@ -103,36 +103,69 @@ export const BluetoothSettings = () => {
     <div className="flex flex-col gap-4 p-4">
       <h2 className="text-lg font-bold">Bluetooth & Connectivity</h2>
 
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded border border-gray-200 bg-gray-50 p-3">
+          <div className="text-gray-500">Preferred Output</div>
+          <div className="text-lg font-semibold">
+            {config.outputMode === "usb" ? "USB (Wired)" : "Bluetooth"}
+          </div>
+        </div>
+        <div className="rounded border border-gray-200 bg-gray-50 p-3">
+          <div className="text-gray-500">Active Output</div>
+          <div className="text-lg font-semibold">
+            {config.activeOutputMode === "usb"
+              ? "USB (Wired)"
+              : config.activeOutputMode === "ble"
+                ? "Bluetooth"
+                : "None"}
+          </div>
+        </div>
+      </div>
+
       {/* Output Mode */}
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium">Output Mode</label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => updateConfig({ ...config, outputMode: "ble" })}
-            className={`flex-1 py-2 rounded border text-sm font-medium ${
-              config.outputMode === "ble"
-                ? "bg-blue-100 border-blue-400 text-blue-800"
-                : "bg-gray-50 border-gray-200 text-gray-600"
-            }`}
-          >
-            Bluetooth (BLE)
-          </button>
-          <button
-            onClick={() => updateConfig({ ...config, outputMode: "usb" })}
-            className={`flex-1 py-2 rounded border text-sm font-medium ${
-              config.outputMode === "usb"
-                ? "bg-blue-100 border-blue-400 text-blue-800"
-                : "bg-gray-50 border-gray-200 text-gray-600"
-            }`}
-          >
-            USB (Wired)
-          </button>
+        <label className="text-sm font-medium">Output Behavior</label>
+        <div className="rounded border border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <div className="text-sm font-medium text-gray-900">
+                Prefer USB when available
+              </div>
+              <p className="text-xs text-gray-500">
+                Off keeps Bluetooth as the default behavior. On makes wired USB
+                the preferred output whenever a cable is connected.
+              </p>
+            </div>
+            <button
+              onClick={() =>
+                updateConfig((current) => ({
+                  ...current,
+                  outputMode: current.outputMode === "usb" ? "ble" : "usb",
+                }))
+              }
+              className={`inline-flex min-w-28 justify-center rounded border px-3 py-2 text-sm font-medium ${
+                config.outputMode === "usb"
+                  ? "border-blue-400 bg-blue-100 text-blue-800"
+                  : "border-gray-300 bg-white text-gray-700"
+              }`}
+            >
+              {config.outputMode === "usb" ? "USB Preferred" : "Bluetooth Default"}
+            </button>
+          </div>
         </div>
         <p className="text-xs text-gray-500">
-          Toggle on device: Layer 2 + double-tap $.
-          {" "}USB / charging trackpad LED behavior is now configured in the
-          Power tab.
+          This sets the preferred output behavior, not just the currently active
+          link. Toggle on device: Layer 2 + double-tap $. USB / charging
+          trackpad LED behavior is configured in the Power tab.
         </p>
+        {config.outputMode !== config.activeOutputMode &&
+          config.activeOutputMode !== "none" && (
+            <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+              Preferred output and active output are different right now. The
+              keyboard is using the currently available link, but it will return
+              to your preferred output when that transport is ready.
+            </div>
+          )}
       </div>
 
       {/* BT Profiles */}

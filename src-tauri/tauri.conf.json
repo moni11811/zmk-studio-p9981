@@ -8,7 +8,7 @@
   },
   "productName": "ZMK Studio",
   "mainBinaryName": "zmk-studio",
-  "version": "1.7.0",
+  "version": "2.1.0",
   "identifier": "dev.zmk.studio",
   "bundle": {
     "active": true,
@@ -35,7 +35,9 @@
       "providerShortName": null,
       "signingIdentity": null
     },
-    "resources": [],
+    "resources": [
+      "resources/firmware/latest/zmk.uf2"
+    ],
     "shortDescription": "",
     "targets": "all",
     "windows": {}

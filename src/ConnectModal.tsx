@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { RpcTransport } from "@zmkfirmware/zmk-studio-ts-client/transport/index";
 import { UserCancelledError } from "@zmkfirmware/zmk-studio-ts-client/transport/errors";
 import type { AvailableDevice } from "./tauri/index";
 import { Bluetooth, RefreshCw } from "lucide-react";
-import { Key, ListBox, ListBoxItem, Selection } from "react-aria-components";
 import { useModalRef } from "./misc/useModalRef";
 import { ExternalLink } from "./misc/ExternalLink";
 import { GenericModal } from "./GenericModal";
@@ -22,19 +21,29 @@ export type TransportFactory = {
 export interface ConnectModalProps {
   open?: boolean;
   transports: TransportFactory[];
-  onTransportCreated: (t: RpcTransport) => void;
+  onTransportCreated: (
+    t: RpcTransport,
+    transport: TransportFactory,
+    device?: AvailableDevice,
+  ) => void;
 }
 
 function deviceList(
   open: boolean,
   transports: TransportFactory[],
-  onTransportCreated: (t: RpcTransport) => void
+  onTransportCreated: (
+    t: RpcTransport,
+    transport: TransportFactory,
+    device?: AvailableDevice,
+  ) => void,
 ) {
   const [devices, setDevices] = useState<
     Array<[TransportFactory, AvailableDevice]>
   >([]);
-  const [selectedDev, setSelectedDev] = useState(new Set<Key>());
+  const [selectedDevId, setSelectedDevId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+  const connectAttemptIdRef = useRef(0);
 
   const loadDevices = useCallback(async () => {
     if (!open) {
@@ -53,7 +62,7 @@ function deviceList(
       entries.push(
         ...devices.map<[TransportFactory, AvailableDevice]>((d) => {
           return [t, d];
-        })
+        }),
       );
     }
 
@@ -62,15 +71,25 @@ function deviceList(
   }, [open, transports]);
 
   useEffect(() => {
-    setSelectedDev(new Set());
+    connectAttemptIdRef.current += 1;
+    setSelectedDevId(null);
     setDevices([]);
 
     if (!open) {
       setRefreshing(false);
+      setConnectingId(null);
       return;
     }
 
     void loadDevices();
+
+    const followUpRefresh = window.setTimeout(() => {
+      void loadDevices();
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(followUpRefresh);
+    };
   }, [loadDevices, open]);
 
   const onRefresh = useCallback(() => {
@@ -78,26 +97,53 @@ function deviceList(
       return;
     }
 
-    setSelectedDev(new Set());
+    setSelectedDevId(null);
     setDevices([]);
 
     void loadDevices();
   }, [loadDevices, open]);
 
   const onSelect = useCallback(
-    async (keys: Selection) => {
-      if (keys === "all") {
+    async (selectedId: string) => {
+      const attemptId = ++connectAttemptIdRef.current;
+      setSelectedDevId(selectedId);
+      const dev = devices.find(([_t, d]) => d.id === selectedId);
+      if (!dev) {
         return;
       }
-      const dev = devices.find(([_t, d]) => keys.has(d.id));
-      if (dev) {
-        dev[0]
-          .pick_and_connect!.connect(dev[1])
-          .then(onTransportCreated)
-          .catch((e) => alert(e));
-      }
+
+      setConnectingId(selectedId);
+      dev[0]
+        .pick_and_connect!.connect(dev[1])
+        .then((transport) => {
+          if (attemptId !== connectAttemptIdRef.current) {
+            transport.abortController.abort(
+              "Superseded Bluetooth connection selection",
+            );
+            return;
+          }
+
+          onTransportCreated(transport, dev[0], dev[1]);
+        })
+        .catch((e) => {
+          if (attemptId !== connectAttemptIdRef.current) {
+            return;
+          }
+
+          console.error(e);
+          if (e instanceof Error) {
+            alert(e.message);
+          } else {
+            alert(String(e));
+          }
+        })
+        .finally(() => {
+          if (attemptId === connectAttemptIdRef.current) {
+            setConnectingId(null);
+          }
+        });
     },
-    [devices, onTransportCreated]
+    [devices, onTransportCreated],
   );
 
   return (
@@ -116,34 +162,50 @@ function deviceList(
           />
         </button>
       </div>
-      <ListBox
-        aria-label="Device"
-        items={devices}
-        onSelectionChange={onSelect}
-        selectionMode="single"
-        selectedKeys={selectedDev}
-        className="flex flex-col gap-1 pt-1"
-      >
-        {([t, d]) => (
-          <ListBoxItem
-            className="grid grid-cols-[1em_1fr] rounded hover:bg-base-300 cursor-pointer px-1"
-            id={d.id}
-            aria-label={d.label}
-          >
-            {t.isWireless && (
-              <Bluetooth className="w-4 justify-center content-center h-full" />
-            )}
-            <span className="col-start-2">{d.label}</span>
-          </ListBoxItem>
-        )}
-      </ListBox>
+      <div className="flex flex-col gap-1 pt-1">
+        {devices.map(([t, d]) => {
+          const isSelected = selectedDevId === d.id;
+          const isConnecting = connectingId === d.id;
+
+          return (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => void onSelect(d.id)}
+              disabled={refreshing || isConnecting}
+              className={`grid grid-cols-[1em_1fr_auto] items-center gap-2 rounded px-2 py-2 text-left transition-colors ${
+                isSelected
+                  ? "bg-blue-50 ring-1 ring-blue-300"
+                  : "hover:bg-base-300"
+              }`}
+            >
+              {t.isWireless ? (
+                <Bluetooth className="w-4 h-4" />
+              ) : (
+                <span className="w-4 h-4 rounded-full bg-base-content/40" />
+              )}
+              <span>
+                {t.isWireless ? "Bluetooth" : "USB Wired"}
+                <span className="block text-xs opacity-70">{d.label}</span>
+              </span>
+              {isConnecting && (
+                <span className="text-xs text-gray-500">Connecting...</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function simpleDevicePicker(
   transports: TransportFactory[],
-  onTransportCreated: (t: RpcTransport) => void
+  onTransportCreated: (
+    t: RpcTransport,
+    transport: TransportFactory,
+    device?: AvailableDevice,
+  ) => void,
 ) {
   const [availableDevices, setAvailableDevices] = useState<
     AvailableDevice[] | undefined
@@ -163,11 +225,12 @@ function simpleDevicePicker(
     if (selectedTransport.connect) {
       async function connectTransport() {
         try {
+          const currentTransport = selectedTransport;
           const transport = await selectedTransport?.connect?.();
 
           if (!ignore) {
             if (transport) {
-              onTransportCreated(transport);
+              onTransportCreated(transport, currentTransport!);
             }
             setSelectedTransport(undefined);
           }
@@ -223,7 +286,8 @@ function simpleDevicePicker(
               className="m-1 p-1"
               onClick={async () => {
                 onTransportCreated(
-                  await selectedTransport!.pick_and_connect!.connect(d)
+                  await selectedTransport!.pick_and_connect!.connect(d),
+                  selectedTransport!,
                 );
                 setSelectedTransport(undefined);
               }}
@@ -274,12 +338,12 @@ function noTransportsOptionsPrompt() {
 
 function connectOptions(
   transports: TransportFactory[],
-  onTransportCreated: (t: RpcTransport) => void,
-  open?: boolean
+  onTransportCreated: (t: RpcTransport, transport: TransportFactory) => void,
+  open?: boolean,
 ) {
   const useSimplePicker = useMemo(
     () => transports.every((t) => !t.pick_and_connect),
-    [transports]
+    [transports],
   );
 
   return useSimplePicker
